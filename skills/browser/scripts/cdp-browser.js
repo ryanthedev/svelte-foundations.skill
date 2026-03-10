@@ -1,12 +1,32 @@
 #!/usr/bin/env node
 
 // cdp-browser.js -- Chrome DevTools Protocol client for browser automation
-// Modes: screenshot, dom, accessibility, click, type, navigate, evaluate
+// Modes: screenshot, dom, accessibility, click, type, navigate, evaluate, form, wait
 // Requires Node 22+ (native WebSocket, native fetch)
 
 "use strict";
 
 const fs = require("fs");
+
+// -- Shadow DOM piercing query --
+// Injected into page context via Runtime.evaluate. Recursively walks shadow roots
+// to find an element matching a CSS selector that standard querySelector misses.
+
+const QUERY_SELECTOR_DEEP_JS = `(function(selector) {
+    function search(root) {
+        const found = root.querySelector(selector);
+        if (found) return found;
+        const all = root.querySelectorAll('*');
+        for (const el of all) {
+            if (el.shadowRoot) {
+                const inner = search(el.shadowRoot);
+                if (inner) return inner;
+            }
+        }
+        return null;
+    }
+    return search(document);
+})`;
 
 // -- Node version check --
 
@@ -235,41 +255,11 @@ async function modeAccessibility(client, args) {
     process.exit(0);
 }
 
-// -- Mode: click --
-// Clicks an element by CSS selector or explicit coordinates.
-// Sequence: mouseMoved -> mousePressed -> mouseReleased (matches real browser behavior).
+// -- Helper: dispatchClick --
+// Sends the 3-event mouse click sequence (move, press, release) at the given coordinates.
+// Single place for click dispatch — used by modeClick, modeForm, and any future click needs.
 
-async function modeClick(client, args) {
-    let x, y;
-
-    if (args.selector) {
-        const doc = await client.send("DOM.getDocument", { depth: 0 });
-        const queryResult = await client.send("DOM.querySelector", {
-            nodeId: doc.root.nodeId,
-            selector: args.selector,
-        });
-        if (queryResult.nodeId === 0) {
-            process.stderr.write(`No element matches: ${args.selector}\n`);
-            client.close();
-            process.exit(1);
-        }
-        const box = await client.send("DOM.getBoxModel", {
-            nodeId: queryResult.nodeId,
-        });
-        // content quad is 8 values: x1,y1, x2,y2, x3,y3, x4,y4
-        const quad = box.model.content;
-        x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
-        y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
-    } else if (args.x !== undefined && args.y !== undefined) {
-        x = args.x;
-        y = args.y;
-    } else {
-        process.stderr.write("Error: click requires --selector or --x and --y\n");
-        client.close();
-        process.exit(1);
-    }
-
-    // mouseMoved first so the element receives hover state
+async function dispatchClick(client, x, y) {
     await client.send("Input.dispatchMouseEvent", {
         type: "mouseMoved",
         x,
@@ -289,6 +279,95 @@ async function modeClick(client, args) {
         button: "left",
         clickCount: 1,
     });
+}
+
+// -- Helper: resolveElement --
+// Finds an element by CSS selector and returns its center coordinates.
+// Tries standard DOM.querySelector first (fast path). If not found and pierce=true,
+// falls back to shadow DOM piercing via Runtime.evaluate.
+// Returns { nodeId?, objectId?, x, y, method } or null if not found.
+
+async function resolveElement(client, selector, { pierce = false } = {}) {
+    // Fast path: standard DOM query
+    const doc = await client.send("DOM.getDocument", { depth: 0 });
+    const queryResult = await client.send("DOM.querySelector", {
+        nodeId: doc.root.nodeId,
+        selector,
+    });
+
+    if (queryResult.nodeId !== 0) {
+        const box = await client.send("DOM.getBoxModel", {
+            nodeId: queryResult.nodeId,
+        });
+        // content quad: x1,y1, x2,y2, x3,y3, x4,y4
+        const quad = box.model.content;
+        const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
+        const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+        return { nodeId: queryResult.nodeId, x, y, method: "dom" };
+    }
+
+    // Shadow DOM fallback: inject recursive query into page context
+    if (pierce) {
+        const evalResult = await client.send("Runtime.evaluate", {
+            expression: `${QUERY_SELECTOR_DEEP_JS}(${JSON.stringify(selector)})`,
+            returnByValue: false,
+        });
+
+        if (
+            evalResult.exceptionDetails ||
+            !evalResult.result ||
+            evalResult.result.subtype === "null"
+        ) {
+            return null;
+        }
+
+        const objectId = evalResult.result.objectId;
+
+        // Get coordinates via JS bounding rect (no nodeId available for shadow elements)
+        const coordResult = await client.send("Runtime.callFunctionOn", {
+            objectId,
+            functionDeclaration: `function() {
+                const rect = this.getBoundingClientRect();
+                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+            }`,
+            returnByValue: true,
+        });
+
+        const coords = coordResult.result.value;
+        return { objectId, x: coords.x, y: coords.y, method: "shadow" };
+    }
+
+    return null;
+}
+
+// -- Mode: click --
+// Clicks an element by CSS selector or explicit coordinates.
+// Sequence: mouseMoved -> mousePressed -> mouseReleased (matches real browser behavior).
+
+async function modeClick(client, args) {
+    let x, y;
+
+    if (args.selector) {
+        const resolved = await resolveElement(client, args.selector, {
+            pierce: args.pierce,
+        });
+        if (!resolved) {
+            process.stderr.write(`No element matches: ${args.selector}\n`);
+            client.close();
+            process.exit(1);
+        }
+        x = resolved.x;
+        y = resolved.y;
+    } else if (args.x !== undefined && args.y !== undefined) {
+        x = args.x;
+        y = args.y;
+    } else {
+        process.stderr.write("Error: click requires --selector or --x and --y\n");
+        client.close();
+        process.exit(1);
+    }
+
+    await dispatchClick(client, x, y);
 
     const target = args.selector ? ` (selector: ${args.selector})` : "";
     process.stdout.write(`Clicked at (${x}, ${y})${target}\n`);
@@ -389,6 +468,383 @@ async function modeEvaluate(client, args) {
     process.exit(0);
 }
 
+// -- Mode: form --
+// Interacts with form elements: fill, select, submit, read.
+// Always uses pierce:true because the primary use case is web components with shadow DOM.
+// Standard DOM elements work fine with pierce (resolveElement tries DOM first).
+
+async function modeForm(client, args) {
+    if (!args.action) {
+        process.stderr.write(
+            "Error: form requires --action (fill|select|submit|read)\n"
+        );
+        client.close();
+        process.exit(1);
+    }
+    if (!args.selector) {
+        process.stderr.write("Error: form requires --selector\n");
+        client.close();
+        process.exit(1);
+    }
+
+    switch (args.action) {
+        case "fill": {
+            const resolved = await resolveElement(client, args.selector, {
+                pierce: true,
+            });
+            if (!resolved) {
+                process.stderr.write(
+                    `No element matches: ${args.selector}\n`
+                );
+                client.close();
+                process.exit(1);
+            }
+
+            // Click to focus the element
+            await dispatchClick(client, resolved.x, resolved.y);
+
+            // Clear existing content if requested (Cmd+A then Backspace)
+            if (args.clear) {
+                await client.send("Input.dispatchKeyEvent", {
+                    type: "keyDown",
+                    key: "a",
+                    commands: ["selectAll"],
+                });
+                await client.send("Input.dispatchKeyEvent", {
+                    type: "keyUp",
+                    key: "a",
+                });
+                await client.send("Input.dispatchKeyEvent", {
+                    type: "keyDown",
+                    key: "Backspace",
+                    code: "Backspace",
+                });
+                await client.send("Input.dispatchKeyEvent", {
+                    type: "keyUp",
+                    key: "Backspace",
+                    code: "Backspace",
+                });
+            }
+
+            // Type the text
+            if (args.text) {
+                await client.send("Input.insertText", { text: args.text });
+            }
+
+            process.stdout.write(
+                `Filled ${args.selector} with '${args.text || ""}'\n`
+            );
+            client.close();
+            process.exit(0);
+        }
+
+        case "select": {
+            // Click the combobox/select to open it
+            const resolved = await resolveElement(client, args.selector, {
+                pierce: true,
+            });
+            if (!resolved) {
+                process.stderr.write(
+                    `No element matches: ${args.selector}\n`
+                );
+                client.close();
+                process.exit(1);
+            }
+            await dispatchClick(client, resolved.x, resolved.y);
+
+            // Type filter text if provided
+            if (args.text) {
+                await client.send("Input.insertText", { text: args.text });
+            }
+
+            // Wait for dropdown options to render (combobox delay)
+            await new Promise((r) => setTimeout(r, 500));
+
+            // Find and click the matching option
+            if (args.option) {
+                const optionResult = await client.send("Runtime.evaluate", {
+                    expression: `(function() {
+                        ${QUERY_SELECTOR_DEEP_JS};
+                        const opts = document.querySelectorAll('[role="option"]');
+                        for (const opt of opts) {
+                            if (opt.textContent.includes(${JSON.stringify(args.option)})) {
+                                const rect = opt.getBoundingClientRect();
+                                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+                            }
+                        }
+                        // Also search shadow DOMs for options
+                        function searchShadow(root) {
+                            const shadowed = root.querySelectorAll('*');
+                            for (const el of shadowed) {
+                                if (el.shadowRoot) {
+                                    const inner = el.shadowRoot.querySelectorAll('[role="option"]');
+                                    for (const opt of inner) {
+                                        if (opt.textContent.includes(${JSON.stringify(args.option)})) {
+                                            const rect = opt.getBoundingClientRect();
+                                            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+                                        }
+                                    }
+                                    const deeper = searchShadow(el.shadowRoot);
+                                    if (deeper) return deeper;
+                                }
+                            }
+                            return null;
+                        }
+                        return searchShadow(document);
+                    })()`,
+                    returnByValue: true,
+                });
+
+                if (
+                    optionResult.exceptionDetails ||
+                    !optionResult.result.value
+                ) {
+                    process.stderr.write(
+                        `No option matching '${args.option}'\n`
+                    );
+                    client.close();
+                    process.exit(1);
+                }
+
+                const optCoords = optionResult.result.value;
+                await dispatchClick(client, optCoords.x, optCoords.y);
+            }
+
+            process.stdout.write(
+                `Selected '${args.option || ""}' from ${args.selector}\n`
+            );
+            client.close();
+            process.exit(0);
+        }
+
+        case "submit": {
+            const resolved = await resolveElement(client, args.selector, {
+                pierce: true,
+            });
+            if (!resolved) {
+                process.stderr.write(
+                    `No element matches: ${args.selector}\n`
+                );
+                client.close();
+                process.exit(1);
+            }
+            await dispatchClick(client, resolved.x, resolved.y);
+
+            // Wait for navigation if requested
+            if (args.navigation) {
+                const timeout = args.timeout || 10000;
+                await waitForNavigation(client, timeout);
+            }
+
+            process.stdout.write(`Submitted ${args.selector}\n`);
+            client.close();
+            process.exit(0);
+        }
+
+        case "read": {
+            const resolved = await resolveElement(client, args.selector, {
+                pierce: true,
+            });
+            if (!resolved) {
+                process.stderr.write(
+                    `No element matches: ${args.selector}\n`
+                );
+                client.close();
+                process.exit(1);
+            }
+
+            // Read function extracts value, checked state, and selected options
+            const readFn = `function() {
+                const val = this.value !== undefined ? this.value : null;
+                const checked = this.checked !== undefined ? this.checked : null;
+                let selectedOpts = null;
+                if (this.selectedOptions) {
+                    selectedOpts = Array.from(this.selectedOptions).map(o => o.textContent.trim());
+                }
+                return { value: val, checked: checked, selectedOptions: selectedOpts };
+            }`;
+
+            let readResult;
+            if (resolved.method === "dom") {
+                // Get objectId from nodeId for Runtime.callFunctionOn
+                const nodeObj = await client.send("DOM.resolveNode", {
+                    nodeId: resolved.nodeId,
+                });
+                readResult = await client.send("Runtime.callFunctionOn", {
+                    objectId: nodeObj.object.objectId,
+                    functionDeclaration: readFn,
+                    returnByValue: true,
+                });
+            } else {
+                // Shadow method: already have objectId
+                readResult = await client.send("Runtime.callFunctionOn", {
+                    objectId: resolved.objectId,
+                    functionDeclaration: readFn,
+                    returnByValue: true,
+                });
+            }
+
+            process.stdout.write(
+                JSON.stringify(readResult.result.value) + "\n"
+            );
+            client.close();
+            process.exit(0);
+        }
+
+        default:
+            process.stderr.write(
+                `Error: Unknown form action '${args.action}'\n`
+            );
+            client.close();
+            process.exit(1);
+    }
+}
+
+// -- Mode: wait --
+// Waits for navigation, element appearance, or network+DOM idle.
+// All sub-modes inject a Promise into the page via Runtime.evaluate with awaitPromise:true.
+// Timeout is enforced inside the injected Promise (via setTimeout + reject).
+
+async function modeWait(client, args) {
+    const timeout = args.timeout || 10000;
+
+    if (args.navigation) {
+        await waitForNavigation(client, timeout);
+        client.close();
+        process.exit(0);
+    } else if (args.selector) {
+        await waitForSelector(client, args.selector, timeout);
+        client.close();
+        process.exit(0);
+    } else if (args.idle) {
+        await waitForIdle(client, timeout);
+        client.close();
+        process.exit(0);
+    } else {
+        process.stderr.write(
+            "Error: wait requires --navigation, --selector, or --idle\n"
+        );
+        client.close();
+        process.exit(1);
+    }
+}
+
+// Watches for URL change via MutationObserver, then waits 500ms for DOM to settle.
+async function waitForNavigation(client, timeout) {
+    const result = await client.send("Runtime.evaluate", {
+        expression: `new Promise((resolve, reject) => {
+            const startUrl = location.href;
+            const observer = new MutationObserver(() => {
+                if (location.href !== startUrl) {
+                    observer.disconnect();
+                    setTimeout(() => resolve(location.href), 500);
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            setTimeout(() => {
+                observer.disconnect();
+                reject(new Error('Navigation timeout'));
+            }, ${timeout});
+        })`,
+        awaitPromise: true,
+        returnByValue: true,
+    });
+
+    if (result.exceptionDetails) {
+        process.stderr.write(`Wait timed out after ${timeout}ms\n`);
+        process.exit(1);
+    }
+
+    process.stdout.write(`Navigation detected: ${result.result.value}\n`);
+}
+
+// Watches for element appearance via MutationObserver with shadow DOM fallback.
+async function waitForSelector(client, selector, timeout) {
+    const result = await client.send("Runtime.evaluate", {
+        expression: `new Promise((resolve, reject) => {
+            const deepQuery = ${QUERY_SELECTOR_DEEP_JS};
+
+            // Check if element already exists
+            if (document.querySelector(${JSON.stringify(selector)}) || deepQuery(${JSON.stringify(selector)})) {
+                return resolve(true);
+            }
+
+            const observer = new MutationObserver(() => {
+                if (document.querySelector(${JSON.stringify(selector)}) || deepQuery(${JSON.stringify(selector)})) {
+                    observer.disconnect();
+                    resolve(true);
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            setTimeout(() => {
+                observer.disconnect();
+                reject(new Error('Selector timeout'));
+            }, ${timeout});
+        })`,
+        awaitPromise: true,
+        returnByValue: true,
+    });
+
+    if (result.exceptionDetails) {
+        process.stderr.write(
+            `Selector '${selector}' not found within ${timeout}ms\n`
+        );
+        process.exit(1);
+    }
+
+    process.stdout.write(`Element found: ${selector}\n`);
+}
+
+// Watches for network (fetch) and DOM quiet period (500ms with no activity).
+async function waitForIdle(client, timeout) {
+    const result = await client.send("Runtime.evaluate", {
+        expression: `new Promise((resolve, reject) => {
+            let inFlight = 0;
+            let lastActivity = Date.now();
+            const originalFetch = window.fetch;
+
+            window.fetch = function(...args) {
+                inFlight++;
+                lastActivity = Date.now();
+                return originalFetch.apply(this, args).finally(() => {
+                    inFlight--;
+                    lastActivity = Date.now();
+                });
+            };
+
+            const observer = new MutationObserver(() => {
+                lastActivity = Date.now();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            const poll = setInterval(() => {
+                if (inFlight === 0 && (Date.now() - lastActivity) > 500) {
+                    clearInterval(poll);
+                    observer.disconnect();
+                    window.fetch = originalFetch;
+                    resolve(true);
+                }
+            }, 100);
+
+            setTimeout(() => {
+                clearInterval(poll);
+                observer.disconnect();
+                window.fetch = originalFetch;
+                reject(new Error('Idle timeout'));
+            }, ${timeout});
+        })`,
+        awaitPromise: true,
+        returnByValue: true,
+    });
+
+    if (result.exceptionDetails) {
+        process.stderr.write(`Idle timeout after ${timeout}ms\n`);
+        process.exit(1);
+    }
+
+    process.stdout.write("Page idle detected\n");
+}
+
 // -- Argument parsing --
 
 function parseArgs() {
@@ -405,6 +861,13 @@ function parseArgs() {
         format: null,
         quality: null,
         expression: null,
+        action: null,
+        option: null,
+        clear: false,
+        navigation: false,
+        idle: false,
+        pierce: false,
+        timeout: null,
     };
 
     let i = 0;
@@ -437,6 +900,27 @@ function parseArgs() {
             case "--quality":
                 args.quality = parseInt(argv[++i], 10);
                 break;
+            case "--action":
+                args.action = argv[++i];
+                break;
+            case "--option":
+                args.option = argv[++i];
+                break;
+            case "--clear":
+                args.clear = true;
+                break;
+            case "--navigation":
+                args.navigation = true;
+                break;
+            case "--idle":
+                args.idle = true;
+                break;
+            case "--pierce":
+                args.pierce = true;
+                break;
+            case "--timeout":
+                args.timeout = parseInt(argv[++i], 10);
+                break;
             default:
                 if (argv[i].startsWith("-")) {
                     process.stderr.write(`Error: Unknown option '${argv[i]}'\n`);
@@ -468,16 +952,25 @@ function printUsage() {
         "  type                      Type text into focused element\n" +
         "  navigate                  Navigate to URL\n" +
         '  evaluate "expression"     Evaluate JS in page context\n' +
+        "  form                      Interact with form elements\n" +
+        "  wait                      Wait for navigation, element, or idle\n" +
         "\n" +
         "Options:\n" +
         "  --port <PORT>             CDP port (default: $CDP_PORT or 9222)\n" +
         "  --output <PATH>           Output file path (screenshot)\n" +
-        "  --selector <CSS>          CSS selector (dom, click)\n" +
+        "  --selector <CSS>          CSS selector (dom, click, form, wait)\n" +
         "  --x <N> --y <N>           Coordinates (click)\n" +
-        "  --text <TEXT>             Text to type (type)\n" +
+        "  --text <TEXT>             Text to type (type, form fill/select)\n" +
         "  --url <URL>               URL to navigate to (navigate)\n" +
         "  --format <jpeg|png>       Screenshot format (default: jpeg)\n" +
-        "  --quality <1-100>         JPEG quality (default: 80)\n"
+        "  --quality <1-100>         JPEG quality (default: 80)\n" +
+        "  --action <ACTION>         Form action: fill|select|submit|read\n" +
+        "  --option <TEXT>            Option text to select (form select)\n" +
+        "  --clear                    Clear field before filling (form fill)\n" +
+        "  --navigation               Wait for URL change (wait, form submit)\n" +
+        "  --idle                     Wait for network+DOM quiet (wait)\n" +
+        "  --pierce                   Pierce shadow DOM (click)\n" +
+        "  --timeout <MS>             Timeout in ms (wait, default: 10000)\n"
     );
     process.exit(1);
 }
@@ -531,6 +1024,12 @@ async function main() {
             break;
         case "evaluate":
             await modeEvaluate(client, args);
+            break;
+        case "form":
+            await modeForm(client, args);
+            break;
+        case "wait":
+            await modeWait(client, args);
             break;
         default:
             process.stderr.write(`Error: Unknown mode '${args.mode}'\n`);

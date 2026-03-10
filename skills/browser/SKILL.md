@@ -2,11 +2,13 @@
 name: browser
 description: Control a web browser via Chrome DevTools Protocol — take screenshots,
   inspect DOM and accessibility trees, click elements, type text, navigate pages,
-  and evaluate JavaScript. Use when interacting with a browser during Svelte or web
-  development. Triggers on "browser", "browser screenshot", "click button", "navigate
-  to", "what's on the page", "DOM tree", "accessibility tree", "open URL", "evaluate
-  in browser", "Chrome", "page source", "inspect element", "type in browser",
-  "fill form in browser", "what does the page look like".
+  evaluate JavaScript, fill forms, and wait for page state changes. Use when interacting
+  with a browser during Svelte or web development. Triggers on "browser", "browser
+  screenshot", "click button", "navigate to", "what's on the page", "DOM tree",
+  "accessibility tree", "open URL", "evaluate in browser", "Chrome", "page source",
+  "inspect element", "type in browser", "fill form in browser", "what does the page
+  look like", "form fill", "form select", "wait for element", "wait for navigation",
+  "shadow DOM", "wait for idle".
 allowed-tools: Bash, Read, Agent
 ---
 
@@ -51,6 +53,13 @@ All scripts live at `${CLAUDE_SKILL_DIR}/scripts/`. Run them with Bash.
 | Check Chrome status     | browser.sh status [--port PORT]                    |
 | Navigate to URL         | cdp-browser.js navigate --url URL [--port PORT]    |
 | Evaluate JS expression  | cdp-browser.js evaluate "expr" [--port PORT]       |
+| Fill form field         | cdp-browser.js form --action fill --selector SEL --text TEXT [--clear] |
+| Select from dropdown    | cdp-browser.js form --action select --selector SEL --text FILTER --option TEXT |
+| Read form value         | cdp-browser.js form --action read --selector SEL   |
+| Submit form             | cdp-browser.js form --action submit --selector SEL [--navigation] |
+| Wait for navigation     | cdp-browser.js wait --navigation [--timeout MS]    |
+| Wait for element        | cdp-browser.js wait --selector SEL [--timeout MS]  |
+| Wait for idle           | cdp-browser.js wait --idle [--timeout MS]          |
 
 ---
 
@@ -149,11 +158,13 @@ Dispatch Agent:
     - cdp-browser.js dom             → full page HTML
     - cdp-browser.js dom --selector SEL → HTML of a specific element
     - cdp-browser.js accessibility   → full accessibility tree JSON
-    - cdp-browser.js click --selector SEL → click element by CSS selector
+    - cdp-browser.js click --selector SEL [--pierce] → click element by CSS selector
     - cdp-browser.js click --x X --y Y   → click at coordinates
     - cdp-browser.js type --text TXT → type text into focused element
     - cdp-browser.js navigate --url URL  → navigate to page
     - cdp-browser.js evaluate "expr" → evaluate JS in page context
+    - cdp-browser.js form --action fill|select|submit|read [flags] → form interaction
+    - cdp-browser.js wait --navigation|--selector SEL|--idle [--timeout MS] → wait for state
 
     TASK: [insert what the user wants to do]
 
@@ -191,9 +202,14 @@ Dispatch Agent:
 - All `cdp-browser.js` commands accept `--port` to override default 9222.
 - Browser coordinates are CSS pixels — no scaling conversion needed (unlike iOS 3x).
 - Large outputs (DOM, accessibility) automatically write to `/tmp` and print the path.
-- For SPAs that don't fire page load events on route changes, use `evaluate` to check readiness instead of relying on `navigate` alone.
+- For SPAs that don't fire page load events on route changes, use `wait --navigation` or `wait --selector` instead of relying on `navigate` alone.
 - For the **interact** workflow, omit `model` to use the user's current model (better reasoning for complex multi-step tasks).
 - Screenshots default to JPEG quality 80 for efficient subagent loading. Use `--format png` if you need full fidelity.
+- Use `form --action fill` instead of separate click + type for form fields (handles focus, clear, and text input in one call).
+- Use `wait --selector` after actions that trigger async rendering.
+- Use `--pierce` flag when targeting elements inside web components (shadow DOM). Form mode uses pierce by default.
+- The `form --action select` command handles combobox interaction in one call (open, type, wait, click option).
+- For CDP interaction recipes (combobox, date picker, dialog, tabs, accordion), see `references/interaction-patterns.md`.
 
 ## Context Efficiency
 
