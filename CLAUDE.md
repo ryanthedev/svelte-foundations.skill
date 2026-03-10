@@ -8,6 +8,9 @@ A Claude Code plugin (`svelte-foundations`) that provides documentation search a
 - **svelte-docs** — searches official Svelte documentation
 - **sveltekit-docs** — searches official SvelteKit documentation
 - **browser** — controls Chrome/Chromium via CDP for screenshots, DOM inspection, accessibility trees, click/type/navigate, and JS evaluation
+- **sk-diagnose** — diagnoses SvelteKit/Svelte errors using pattern matching and docs
+- **sk-coding** — provides coding guidance, migration patterns, and best practices
+- **sk-a11y-audit** — audits page accessibility via browser AX tree inspection
 
 ## Repository Structure
 
@@ -22,6 +25,14 @@ skills/
   browser/SKILL.md           — Browser automation skill (CDP-based)
   browser/scripts/browser.sh — Chrome lifecycle management (ensure, status, url)
   browser/scripts/cdp-browser.js — CDP client (screenshot, dom, accessibility, click, type, navigate, evaluate)
+  _shared/scripts/vite.sh        — Vite dev server health check and environment detection
+  _shared/references/            — Shared reference files (svelte5-patterns.md, sveltekit-checklist.md)
+  sk-diagnose/SKILL.md           — Error diagnosis skill
+  sk-diagnose/references/        — Error pattern database
+  sk-coding/SKILL.md             — Coding guidance skill
+  sk-coding/references/          — Workflow checklist, migration guide
+  sk-a11y-audit/SKILL.md         — Accessibility audit skill
+  sk-a11y-audit/references/      — A11y checklist
 refs/
   svelte-docs/               — Local copy of Svelte docs (markdown, organized by numbered sections)
   sveltekit-docs/            — Local copy of SvelteKit docs (markdown, organized by numbered sections)
@@ -35,6 +46,8 @@ Each skill (defined in `SKILL.md`) follows the same pattern:
 3. Read matched files and cite the filename
 
 Doc skills are restricted to `Read`, `Grep`, and `Glob` tools. The browser skill uses `Bash`, `Read`, and `Agent` (set in `.claude/settings.local.json`).
+
+New skills follow two additional patterns: sk-diagnose combines Bash (health check), Grep/Read (docs + config), and Agent (browser error capture) for error diagnosis. sk-coding uses Read/Grep/Glob to search docs and shared references before/during/after coding. sk-a11y-audit dispatches Agent subagents to capture accessibility trees and check against an a11y checklist.
 
 ## Key Conventions
 
