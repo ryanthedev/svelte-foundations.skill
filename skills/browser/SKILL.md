@@ -69,6 +69,11 @@ All scripts live at `${CLAUDE_SKILL_DIR}/scripts/`. Run them with Bash.
 | Click all matching      | cdp-browser.js click --selector SEL --all [--aria-expanded true\|false] [--delay MS] [--pierce] [--match-text T] [--visible] |
 | Collect expandable data | cdp-browser.js collect --selector SEL --read-selector SEL [--close] [--delay MS] [--pierce] [--match-text T] [--visible] [--aria-expanded VAL] |
 | Evaluate from file      | cdp-browser.js evaluate --file PATH [--json]        |
+| Capture console/network    | cdp-browser.js diagnostics [--output PATH]              |
+| Capture as JSONL           | cdp-browser.js diagnostics --jsonl [--output PATH]      |
+| Stream diagnostics live    | cdp-browser.js diagnostics --live [--output PATH]       |
+| Stop live diagnostics      | cdp-browser.js diagnostics --stop                       |
+| Summarize diagnostics log  | cdp-browser.js diagnostics --dump [--output PATH]       |
 
 ---
 
@@ -235,6 +240,7 @@ Dispatch Agent:
 - Evaluate mode auto-injects `querySelectorDeep` and `querySelectorAllDeep` helpers into the expression scope for shadow DOM queries.
 - Use `click --all --selector "button.toggle"` to click every matching element. Add `--aria-expanded false` to only click collapsed toggles. Add `--delay 200` for a pause between clicks.
 - Use `collect --selector "button.accordion" --read-selector ".panel-content" --close` to open each accordion, read its content, and close it again. Output is a JSON array of text strings.
+- Diagnostics mode captures console logs and network requests. Default output is HAR 1.2 JSON (`.har`). Use `--jsonl` for raw JSONL format. Console events always written to a companion `.jsonl` file when using HAR format.
 
 ## Context Efficiency
 

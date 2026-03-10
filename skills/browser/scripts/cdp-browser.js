@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // cdp-browser.js -- Chrome DevTools Protocol client for browser automation
-// Modes: screenshot, dom, accessibility, click, type, navigate, evaluate, form, wait, scroll, dismiss, extract, collect
+// Modes: screenshot, dom, accessibility, click, type, navigate, evaluate, form, wait, scroll, dismiss, extract, collect, diagnostics
 // Requires Node 22+ (native WebSocket, native fetch)
 
 "use strict";
@@ -725,16 +725,42 @@ async function modeDismiss(client, args) {
             var openDialogs = root.querySelectorAll('dialog[open]');
             for (var i = 0; i < openDialogs.length; i++) dialogs.push(openDialogs[i]);
 
+            // Helper: check if element is truly visible (rect + computed style + ancestor chain)
+            function isElementVisible(el) {
+                var r = el.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return false;
+                // Walk up to check for hidden ancestors (handles shadow DOM parents)
+                var node = el;
+                while (node && node !== document) {
+                    if (node.nodeType === 1) {
+                        var s = window.getComputedStyle(node);
+                        if (s.display === 'none' || s.visibility === 'hidden') return false;
+                        // Check for hidden utility classes (common in design systems)
+                        var cls = (node.className || '').toString();
+                        if (cls.indexOf('displayHidden') !== -1 || cls.indexOf('visually-hidden') !== -1) return false;
+                    }
+                    // Traverse up: shadow root → host element, otherwise → parentNode
+                    if (node.nodeType === 11 && node.host) {
+                        node = node.host;
+                    } else {
+                        node = node.parentNode;
+                    }
+                }
+                return true;
+            }
+
             // ARIA role dialogs that are visible
             var roleDialogs = root.querySelectorAll('[role="dialog"]');
             for (var j = 0; j < roleDialogs.length; j++) {
-                var r = roleDialogs[j].getBoundingClientRect();
-                if (r.width > 0 && r.height > 0) dialogs.push(roleDialogs[j]);
+                if (isElementVisible(roleDialogs[j])) dialogs.push(roleDialogs[j]);
             }
 
-            // Custom dialog elements (auro-dialog, fs-auro-dialog)
-            var customDialogs = root.querySelectorAll('auro-dialog, fs-auro-dialog');
-            for (var k = 0; k < customDialogs.length; k++) dialogs.push(customDialogs[k]);
+            // Custom dialog elements — only if visible
+            // Some custom dialogs portal their content elsewhere, leaving the host at 0x0
+            var customDialogs = root.querySelectorAll('[is="dialog"], sl-dialog, md-dialog, ion-modal, vaadin-dialog-overlay');
+            for (var k = 0; k < customDialogs.length; k++) {
+                if (isElementVisible(customDialogs[k])) dialogs.push(customDialogs[k]);
+            }
 
             // High z-index overlays (z-index > 999, visible, not tiny)
             var allEls = root.querySelectorAll('*');
@@ -779,43 +805,110 @@ async function modeDismiss(client, args) {
 
         var topmost = unique[0];
 
-        // Find close button in topmost dialog
+        // Find close button in topmost dialog — recursively searches all shadow roots
+        // Also searches for clickable custom elements that wrap native buttons
         function findCloseButton(el) {
-            var buttons = el.querySelectorAll('button');
-            for (var b = 0; b < buttons.length; b++) {
-                var label = (buttons[b].getAttribute('aria-label') || '').toLowerCase();
-                var text = buttons[b].textContent.trim().toLowerCase();
-                if (label.indexOf('close') !== -1 || label.indexOf('dismiss') !== -1 ||
-                    text === 'close' || text === 'dismiss' || text === 'x') {
-                    var rect = buttons[b].getBoundingClientRect();
-                    return {
+            // Collect all interactive elements from light DOM and nested shadow roots
+            var allCandidates = [];
+            function collectCandidates(root) {
+                // Native buttons
+                var buttons = root.querySelectorAll('button');
+                for (var b = 0; b < buttons.length; b++) allCandidates.push(buttons[b]);
+                // Elements with close-related class names (custom element wrappers)
+                var closeByClass = root.querySelectorAll('.close-button, .btn-close, .close, [class*="close-btn"], [class*="dialog-close"]');
+                for (var c = 0; c < closeByClass.length; c++) allCandidates.push(closeByClass[c]);
+                // Recurse into shadow roots
+                var all = root.querySelectorAll('*');
+                for (var a = 0; a < all.length; a++) {
+                    if (all[a].shadowRoot) collectCandidates(all[a].shadowRoot);
+                }
+            }
+            collectCandidates(el);
+            if (el.shadowRoot) collectCandidates(el.shadowRoot);
+
+            // Deduplicate
+            var seen = new Set();
+            var unique = [];
+            for (var d = 0; d < allCandidates.length; d++) {
+                if (!seen.has(allCandidates[d])) {
+                    seen.add(allCandidates[d]);
+                    unique.push(allCandidates[d]);
+                }
+            }
+
+            // Score each candidate — higher score = better close-button match
+            var best = null;
+            var bestScore = 0;
+            var dialogRect = el.getBoundingClientRect();
+            for (var i = 0; i < unique.length; i++) {
+                var btn = unique[i];
+                var label = (btn.getAttribute('aria-label') || '').toLowerCase();
+                var text = btn.textContent.trim().toLowerCase();
+                var cls = (btn.className && typeof btn.className === 'string') ? btn.className.toLowerCase() : '';
+                var rect = btn.getBoundingClientRect();
+                // Skip invisible elements
+                if (rect.width === 0 || rect.height === 0) continue;
+
+                var score = 0;
+                // Aria label matches
+                if (label.indexOf('close') !== -1 || label.indexOf('dismiss') !== -1) score += 3;
+                // Text content matches
+                if (text === 'close' || text === 'dismiss') score += 3;
+                if (text === 'x' || text === '\u00d7') score += 2;
+                // Class name matches
+                if (cls.indexOf('close') !== -1) score += 2;
+                // Position bonus: top-right corner of dialog is canonical close-button location
+                if (dialogRect.width > 0 && dialogRect.height > 0) {
+                    if (rect.x > dialogRect.x + dialogRect.width * 0.6 &&
+                        rect.y < dialogRect.y + dialogRect.height * 0.3) {
+                        score += 1;
+                    }
+                }
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = {
                         method: 'click',
-                        element: buttons[b].tagName + (buttons[b].className ? '.' + buttons[b].className.split(' ')[0] : ''),
+                        element: btn.tagName + (cls ? '.' + cls.split(' ')[0] : ''),
                         coords: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
                     };
                 }
             }
-            // Also check shadow root of the dialog itself
-            if (el.shadowRoot) {
-                var shadowBtns = el.shadowRoot.querySelectorAll('button');
-                for (var sb = 0; sb < shadowBtns.length; sb++) {
-                    var sLabel = (shadowBtns[sb].getAttribute('aria-label') || '').toLowerCase();
-                    var sText = shadowBtns[sb].textContent.trim().toLowerCase();
-                    if (sLabel.indexOf('close') !== -1 || sLabel.indexOf('dismiss') !== -1 ||
-                        sText === 'close' || sText === 'dismiss' || sText === 'x') {
-                        var sRect = shadowBtns[sb].getBoundingClientRect();
-                        return {
-                            method: 'click',
-                            element: shadowBtns[sb].tagName + (shadowBtns[sb].className ? '.' + shadowBtns[sb].className.split(' ')[0] : ''),
-                            coords: { x: sRect.x + sRect.width / 2, y: sRect.y + sRect.height / 2 }
-                        };
-                    }
-                }
-            }
-            return null;
+            return best;
         }
 
         var closeBtn = findCloseButton(topmost);
+
+        // If no close button in the topmost element, search its parent chain
+        // and siblings. Portaled dialogs often render the overlay and the dialog
+        // content as siblings, or the close button lives in a parent's shadow root.
+        if (!closeBtn) {
+            // Walk up from topmost to find a close button in ancestors or their shadow hosts
+            var ancestor = topmost.parentNode || (topmost.getRootNode && topmost.getRootNode().host);
+            var searched = new Set();
+            searched.add(topmost);
+            while (!closeBtn && ancestor && ancestor !== document) {
+                if (!searched.has(ancestor)) {
+                    searched.add(ancestor);
+                    closeBtn = findCloseButton(ancestor);
+                }
+                // Move up: if we're in a shadow root, go to the host element
+                if (ancestor.nodeType === 11 && ancestor.host) {
+                    ancestor = ancestor.host;
+                } else {
+                    ancestor = ancestor.parentNode;
+                }
+            }
+        }
+
+        // Last resort: search ALL visible dialog/overlay elements for a close button
+        if (!closeBtn) {
+            for (var f = 0; f < unique.length; f++) {
+                if (unique[f] === topmost) continue;
+                closeBtn = findCloseButton(unique[f]);
+                if (closeBtn) break;
+            }
+        }
+
         if (closeBtn) {
             return { dismissed: true, method: closeBtn.method, element: closeBtn.element, coords: closeBtn.coords };
         }
@@ -914,12 +1007,27 @@ async function modeExtract(client, args) {
             })
             .join(", ");
 
-        // Uses deepText for shadow DOM text extraction, and querySelectorDeep
-        // as fallback when pierce is enabled and querySelector returns null.
+        // Uses deepText for shadow DOM text extraction, and querySelectorScoped
+        // to search within a container's shadow roots (not from document root).
         const pierceFlag = args.pierce ? "true" : "false";
         extractBody = `(function() {
             ${TEXT_CONTENT_DEEP_JS}
-            var querySelectorDeep = ${QUERY_SELECTOR_DEEP_JS};
+            function querySelectorScoped(root, selector) {
+                var found = root.querySelector(selector);
+                if (found) return found;
+                var all = root.querySelectorAll('*');
+                for (var k = 0; k < all.length; k++) {
+                    if (all[k].shadowRoot) {
+                        found = querySelectorScoped(all[k].shadowRoot, selector);
+                        if (found) return found;
+                    }
+                }
+                if (root.shadowRoot) {
+                    found = querySelectorScoped(root.shadowRoot, selector);
+                    if (found) return found;
+                }
+                return null;
+            }
             var containers = ${queryFn};
             var fieldDefs = [${fieldEntries}];
             var usePierce = ${pierceFlag};
@@ -928,8 +1036,8 @@ async function modeExtract(client, args) {
                 var row = {};
                 for (var j = 0; j < fieldDefs.length; j++) {
                     var child = containers[i].querySelector(fieldDefs[j].selector);
-                    if (!child && usePierce && containers[i].shadowRoot) {
-                        child = querySelectorDeep(fieldDefs[j].selector);
+                    if (!child && usePierce) {
+                        child = querySelectorScoped(containers[i], fieldDefs[j].selector);
                     }
                     row[fieldDefs[j].name] = child ? deepText(child) : null;
                 }
@@ -1013,6 +1121,16 @@ async function modeCollect(client, args) {
 
     const results = [];
     for (let idx = 0; idx < coords.length; idx++) {
+        // Capture body text before click for fallback diff
+        const beforeResult = await client.send("Runtime.evaluate", {
+            expression: "document.body.innerText",
+            returnByValue: true,
+        });
+        const beforeText =
+            !beforeResult.exceptionDetails && beforeResult.result
+                ? beforeResult.result.value || ""
+                : "";
+
         // Click to open
         await dispatchClick(client, coords[idx].x, coords[idx].y);
         await new Promise((r) => setTimeout(r, delay));
@@ -1032,6 +1150,32 @@ async function modeCollect(client, args) {
         ) {
             text = evalResult.result.value;
         }
+
+        // Fallback: if read-selector matched nothing, diff body text to find new content
+        if (text === null || (typeof text === "string" && text.trim() === "")) {
+            const afterResult = await client.send("Runtime.evaluate", {
+                expression: "document.body.innerText",
+                returnByValue: true,
+            });
+            const afterText =
+                !afterResult.exceptionDetails && afterResult.result
+                    ? afterResult.result.value || ""
+                    : "";
+            if (afterText.length > beforeText.length) {
+                // Extract the new content that appeared after the click
+                // Find lines in afterText that weren't in beforeText
+                const beforeLines = new Set(beforeText.split("\n"));
+                const newLines = afterText
+                    .split("\n")
+                    .filter(function (line) {
+                        return !beforeLines.has(line) && line.trim() !== "";
+                    });
+                if (newLines.length > 0) {
+                    text = newLines.join("\n");
+                }
+            }
+        }
+
         results.push(text);
 
         // Close if requested
@@ -1544,6 +1688,11 @@ function parseArgs() {
         delay: undefined,
         readSelector: null,
         close: false,
+        live: false,
+        stop: false,
+        dump: false,
+        snapshot: false,
+        jsonl: false,
     };
 
     let i = 0;
@@ -1645,6 +1794,21 @@ function parseArgs() {
             case "--expression":
                 args.expression = argv[++i];
                 break;
+            case "--live":
+                args.live = true;
+                break;
+            case "--stop":
+                args.stop = true;
+                break;
+            case "--dump":
+                args.dump = true;
+                break;
+            case "--snapshot":
+                args.snapshot = true;
+                break;
+            case "--jsonl":
+                args.jsonl = true;
+                break;
             default:
                 if (argv[i].startsWith("-")) {
                     process.stderr.write(`Error: Unknown option '${argv[i]}'\n`);
@@ -1682,6 +1846,7 @@ function printUsage() {
         "  dismiss                   Dismiss topmost open dialog or overlay\n" +
         "  extract                   Extract structured data from repeated elements\n" +
         "  collect                   Click-read-close loop for expandable content\n" +
+        "  diagnostics               Capture console logs and network requests\n" +
         "\n" +
         "Options:\n" +
         "  --port <PORT>             CDP port (default: $CDP_PORT or 9222)\n" +
@@ -1714,9 +1879,667 @@ function printUsage() {
         "  --aria-expanded <VAL>      Filter by aria-expanded attribute (click --all, collect)\n" +
         "  --delay <MS>               Delay between actions in ms (click --all: 0, collect: 300)\n" +
         "  --read-selector <CSS>      Content selector to read after each click (collect)\n" +
-        "  --close                    Click toggle again to close after reading (collect)\n"
+        "  --close                    Click toggle again to close after reading (collect)\n" +
+        "  --jsonl                    Output as JSONL instead of HAR (diagnostics)\n" +
+        "  --live                     Stream diagnostics continuously to file\n" +
+        "  --stop                     Stop a running live diagnostics session\n" +
+        "  --dump                     Summarize a diagnostics log file\n"
     );
     process.exit(1);
+}
+
+// -- Diagnostics: record formatters --
+// Pure transformers that normalize CDP event params into a uniform record shape.
+// Console records have {kind, level, text, url?, source?, ts}.
+// Network records have {kind, event, method/status/error, url, requestId, ts}.
+
+const MAX_TEXT_LENGTH = 500;
+
+function formatConsoleRecord(params, eventType) {
+    let level, text, url, source, ts;
+
+    if (eventType === "Runtime.consoleAPICalled") {
+        level = params.type;
+        text = params.args
+            .map((arg) => arg.value !== undefined ? String(arg.value) : (arg.description || ""))
+            .join(" ");
+        ts = params.timestamp;
+    } else if (eventType === "Runtime.exceptionThrown") {
+        level = "exception";
+        text = (params.exceptionDetails.exception && params.exceptionDetails.exception.description)
+            || params.exceptionDetails.text
+            || "unknown";
+        ts = params.timestamp;
+    } else if (eventType === "Log.entryAdded") {
+        level = params.entry.level;
+        text = params.entry.text;
+        url = params.entry.url;
+        source = params.entry.source;
+        ts = params.entry.timestamp;
+    }
+
+    if (text && text.length > MAX_TEXT_LENGTH) {
+        text = text.slice(0, MAX_TEXT_LENGTH);
+    }
+
+    const record = { kind: "console", level, text, ts };
+    if (url) record.url = url;
+    if (source) record.source = source;
+    return record;
+}
+
+function formatNetworkRecord(params, eventType) {
+    if (eventType === "Network.requestWillBeSent") {
+        return {
+            kind: "network",
+            event: "request",
+            method: params.request.method,
+            url: params.request.url,
+            requestId: params.requestId,
+            ts: params.timestamp,
+        };
+    }
+    if (eventType === "Network.responseReceived") {
+        return {
+            kind: "network",
+            event: "response",
+            status: params.response.status,
+            url: params.response.url,
+            mimeType: params.response.mimeType,
+            requestId: params.requestId,
+            ts: params.timestamp,
+        };
+    }
+    if (eventType === "Network.loadingFailed") {
+        return {
+            kind: "network",
+            event: "failed",
+            error: params.errorText || "unknown",
+            canceled: !!params.canceled,
+            requestId: params.requestId,
+            ts: params.timestamp,
+        };
+    }
+}
+
+// -- Diagnostics: HAR helpers --
+// Pure transformers for building HAR 1.2 output from CDP network events.
+
+// Converts a CDP header object ({name: value, ...}) to HAR header array [{name, value}, ...].
+function convertHeaders(headerObj) {
+    if (!headerObj) return [];
+    return Object.entries(headerObj).map(([name, value]) => ({ name, value: String(value) }));
+}
+
+// Parses query string parameters from a URL into [{name, value}, ...].
+// Returns [] for invalid URLs.
+function parseQueryString(urlString) {
+    try {
+        const url = new URL(urlString);
+        const params = [];
+        for (const [name, value] of url.searchParams.entries()) {
+            params.push({ name, value });
+        }
+        return params;
+    } catch {
+        return [];
+    }
+}
+
+// -- Diagnostics: wireHarNetworkListeners --
+// Adds a WebSocket message listener that populates requestMap with network request
+// lifecycle data. Does NOT enable CDP domains -- wireEventListeners handles that.
+
+function wireHarNetworkListeners(ws, requestMap) {
+    ws.addEventListener("message", (event) => {
+        let msg;
+        try {
+            msg = JSON.parse(event.data);
+        } catch {
+            return;
+        }
+
+        const params = msg.params;
+        if (!params) return;
+
+        switch (msg.method) {
+            case "Network.requestWillBeSent":
+                requestMap.set(params.requestId, {
+                    method: params.request.method,
+                    url: params.request.url,
+                    headers: convertHeaders(params.request.headers),
+                    postData: params.request.postData,
+                    ts: params.timestamp,
+                    wallTime: params.wallTime,
+                });
+                break;
+            case "Network.responseReceived": {
+                const entry = requestMap.get(params.requestId);
+                if (entry) {
+                    entry.status = params.response.status;
+                    entry.statusText = params.response.statusText;
+                    entry.responseHeaders = convertHeaders(params.response.headers);
+                    entry.mimeType = params.response.mimeType;
+                    entry.timing = params.response.timing;
+                }
+                break;
+            }
+            case "Network.loadingFinished": {
+                const entry = requestMap.get(params.requestId);
+                if (entry) {
+                    entry.encodedDataLength = params.encodedDataLength;
+                    entry.completed = true;
+                }
+                break;
+            }
+            case "Network.loadingFailed": {
+                const entry = requestMap.get(params.requestId);
+                if (entry) {
+                    entry.failed = true;
+                    entry.errorText = params.errorText;
+                }
+                break;
+            }
+        }
+    });
+}
+
+// -- Diagnostics: buildHarLog --
+// Transforms a requestMap (populated by wireHarNetworkListeners) into a HAR 1.2 object.
+// Gracefully handles missing fields at every level.
+
+function buildHarLog(requestMap) {
+    const harObj = {
+        log: {
+            version: "1.2",
+            creator: { name: "cdp-browser", version: "0.3.0" },
+            entries: [],
+        },
+    };
+
+    for (const [, entry] of requestMap) {
+        const startedDateTime = entry.wallTime
+            ? new Date(entry.wallTime * 1000).toISOString()
+            : new Date().toISOString();
+
+        // Build request object
+        const request = {
+            method: entry.method,
+            url: entry.url,
+            httpVersion: "HTTP/1.1",
+            headers: entry.headers || [],
+            queryString: parseQueryString(entry.url),
+            headersSize: -1,
+            bodySize: entry.postData ? entry.postData.length : 0,
+        };
+        if (entry.postData) {
+            request.postData = {
+                mimeType: "application/x-www-form-urlencoded",
+                text: entry.postData,
+            };
+        }
+
+        // Build response object based on request state
+        let response;
+        if (entry.failed) {
+            response = {
+                status: 0,
+                statusText: entry.errorText || "failed",
+                httpVersion: "HTTP/1.1",
+                headers: [],
+                content: { size: -1, mimeType: "" },
+                redirectURL: "",
+                headersSize: -1,
+                bodySize: -1,
+            };
+        } else if (entry.status !== undefined) {
+            response = {
+                status: entry.status,
+                statusText: entry.statusText || "",
+                httpVersion: "HTTP/1.1",
+                headers: entry.responseHeaders || [],
+                content: {
+                    size: entry.encodedDataLength || -1,
+                    mimeType: entry.mimeType || "",
+                },
+                redirectURL: "",
+                headersSize: -1,
+                bodySize: entry.encodedDataLength || -1,
+            };
+        } else {
+            response = {
+                status: 0,
+                statusText: "(pending)",
+                httpVersion: "HTTP/1.1",
+                headers: [],
+                content: { size: -1, mimeType: "" },
+                redirectURL: "",
+                headersSize: -1,
+                bodySize: -1,
+            };
+        }
+
+        // Build timings from CDP timing data
+        let timings;
+        if (entry.timing) {
+            timings = {
+                blocked: Math.max(entry.timing.dnsStart, 0),
+                dns: Math.max(entry.timing.dnsEnd - entry.timing.dnsStart, -1),
+                connect: Math.max(entry.timing.connectEnd - entry.timing.connectStart, -1),
+                ssl: entry.timing.sslEnd > 0
+                    ? Math.max(entry.timing.sslEnd - entry.timing.sslStart, -1)
+                    : -1,
+                send: Math.max(entry.timing.sendEnd - entry.timing.sendStart, -1),
+                wait: Math.max(entry.timing.receiveHeadersEnd - entry.timing.sendEnd, -1),
+                receive: 0,
+            };
+        } else {
+            timings = { blocked: -1, dns: -1, connect: -1, ssl: -1, send: -1, wait: -1, receive: -1 };
+        }
+
+        const time = entry.timing ? Math.round(entry.timing.receiveHeadersEnd) : -1;
+
+        harObj.log.entries.push({
+            startedDateTime,
+            time,
+            request,
+            response,
+            cache: {},
+            timings,
+            pageref: "",
+        });
+    }
+
+    return harObj;
+}
+
+// -- Diagnostics: wireEventListeners --
+// Wires a single WebSocket message handler that dispatches to formatConsoleRecord
+// or formatNetworkRecord, then enables the three CDP domains (Runtime, Log, Network).
+// Listeners are wired BEFORE enabling domains so replayed events are caught.
+
+function wireEventListeners(ws, onRecord) {
+    let nextId = 1;
+
+    function sendCmd(method, params) {
+        ws.send(JSON.stringify({ id: nextId++, method, params: params || {} }));
+    }
+
+    ws.addEventListener("message", (event) => {
+        let msg;
+        try {
+            msg = JSON.parse(event.data);
+        } catch {
+            return;
+        }
+
+        switch (msg.method) {
+            case "Runtime.consoleAPICalled":
+            case "Runtime.exceptionThrown":
+            case "Log.entryAdded":
+                onRecord(formatConsoleRecord(msg.params, msg.method));
+                break;
+            case "Network.requestWillBeSent":
+            case "Network.responseReceived":
+            case "Network.loadingFailed":
+                onRecord(formatNetworkRecord(msg.params, msg.method));
+                break;
+        }
+    });
+
+    sendCmd("Runtime.enable");
+    sendCmd("Log.enable");
+    sendCmd("Network.enable");
+}
+
+// -- Diagnostics: snapshot --
+// Opens a raw WebSocket, captures console/network events for 1.5 seconds,
+// then writes output. Default format is HAR 1.2 (.har) with a companion .jsonl
+// for console events. Use --jsonl for the legacy JSONL-only format.
+
+async function diagnosticsSnapshot(wsUrl, args) {
+    const useJsonl = args.jsonl;
+
+    if (useJsonl) {
+        // Legacy JSONL path: all records in a single JSONL file
+        const outputPath = args.output || `/tmp/browser-diagnostics-${Date.now()}.jsonl`;
+        const records = [];
+        const ws = new WebSocket(wsUrl);
+
+        await new Promise((resolve, reject) => {
+            ws.addEventListener("open", () => {
+                wireEventListeners(ws, (record) => {
+                    records.push(record);
+                });
+
+                setTimeout(() => {
+                    const lines = records.map((r) => JSON.stringify(r)).join("\n");
+                    fs.writeFileSync(outputPath, lines ? lines + "\n" : "", "utf8");
+                    ws.close();
+                    process.stdout.write(outputPath + "\n");
+                    process.exit(0);
+                }, 1500);
+
+                resolve();
+            });
+
+            ws.addEventListener("error", (err) => {
+                reject(new Error("WebSocket error: " + (err.message || "connection failed")));
+            });
+        });
+        return;
+    }
+
+    // HAR default path: network in .har, console in companion .jsonl
+    const timestamp = Date.now();
+    const outputPath = args.output || `/tmp/browser-diagnostics-${timestamp}.har`;
+    const consolePath = outputPath.replace(/\.har$/, ".jsonl");
+    const requestMap = new Map();
+    const consoleRecords = [];
+
+    const ws = new WebSocket(wsUrl);
+
+    await new Promise((resolve, reject) => {
+        ws.addEventListener("open", () => {
+            wireEventListeners(ws, (record) => {
+                consoleRecords.push(record);
+            });
+            wireHarNetworkListeners(ws, requestMap);
+
+            setTimeout(() => {
+                const harObj = buildHarLog(requestMap);
+                fs.writeFileSync(outputPath, JSON.stringify(harObj, null, 2), "utf8");
+
+                const consoleLines = consoleRecords.map((r) => JSON.stringify(r)).join("\n");
+                fs.writeFileSync(consolePath, consoleLines ? consoleLines + "\n" : "", "utf8");
+
+                process.stdout.write(outputPath + "\n");
+                ws.close();
+                process.exit(0);
+            }, 1500);
+
+            resolve();
+        });
+
+        ws.addEventListener("error", (err) => {
+            reject(new Error("WebSocket error: " + (err.message || "connection failed")));
+        });
+    });
+}
+
+// -- Diagnostics: live --
+// Opens a raw WebSocket and streams diagnostics to file(s).
+// Default format is HAR: network data accumulates in memory and flushes to .har on
+// cleanup, while console events stream to a companion .jsonl file.
+// Use --jsonl for the legacy format (all records interleaved in one .jsonl file).
+// Writes a PID file so diagnosticsStop() can find and kill this process.
+
+async function diagnosticsLive(wsUrl, args) {
+    const useJsonl = args.jsonl;
+    const pidPath = "/tmp/browser-diagnostics.pid";
+
+    if (useJsonl) {
+        // Legacy JSONL path: stream all records to a single file
+        const outputPath = args.output || `/tmp/browser-diagnostics-${Date.now()}.jsonl`;
+        const writeStream = fs.createWriteStream(outputPath, { flags: "a" });
+        const ws = new WebSocket(wsUrl);
+
+        ws.addEventListener("open", () => {
+            wireEventListeners(ws, (record) => {
+                writeStream.write(JSON.stringify(record) + "\n");
+            });
+
+            fs.writeFileSync(pidPath, String(process.pid), "utf8");
+            process.stdout.write(outputPath + "\n");
+        });
+
+        function cleanup() {
+            try { fs.unlinkSync(pidPath); } catch {}
+            writeStream.end();
+        }
+
+        ws.addEventListener("close", () => { cleanup(); process.exit(0); });
+        ws.addEventListener("error", () => { cleanup(); process.exit(1); });
+        process.on("SIGTERM", () => { cleanup(); ws.close(); process.exit(0); });
+        process.on("SIGINT", () => { cleanup(); ws.close(); process.exit(0); });
+        return;
+    }
+
+    // HAR default path: network accumulates in memory, console streams to .jsonl
+    const timestamp = Date.now();
+    const outputPath = args.output || `/tmp/browser-diagnostics-${timestamp}.har`;
+    const consolePath = outputPath.replace(/\.har$/, ".jsonl");
+    const requestMap = new Map();
+    const consoleWriteStream = fs.createWriteStream(consolePath, { flags: "a" });
+
+    const ws = new WebSocket(wsUrl);
+
+    ws.addEventListener("open", () => {
+        wireEventListeners(ws, (record) => {
+            consoleWriteStream.write(JSON.stringify(record) + "\n");
+        });
+        wireHarNetworkListeners(ws, requestMap);
+
+        fs.writeFileSync(pidPath, String(process.pid), "utf8");
+        process.stdout.write(outputPath + "\n");
+    });
+
+    // Flush HAR data and clean up on exit
+    function cleanup() {
+        const harObj = buildHarLog(requestMap);
+        fs.writeFileSync(outputPath, JSON.stringify(harObj, null, 2), "utf8");
+        consoleWriteStream.end();
+        try { fs.unlinkSync(pidPath); } catch {}
+    }
+
+    ws.addEventListener("close", () => { cleanup(); process.exit(0); });
+    ws.addEventListener("error", () => { cleanup(); process.exit(1); });
+    process.on("SIGTERM", () => { cleanup(); ws.close(); process.exit(0); });
+    process.on("SIGINT", () => { cleanup(); ws.close(); process.exit(0); });
+}
+
+// -- Diagnostics: stop --
+// Reads the PID file written by diagnosticsLive, kills the process, and cleans up.
+
+function diagnosticsStop() {
+    const pidPath = "/tmp/browser-diagnostics.pid";
+
+    let pidStr;
+    try {
+        pidStr = fs.readFileSync(pidPath, "utf8");
+    } catch {
+        process.stderr.write("No live diagnostics session found\n");
+        process.exit(1);
+    }
+
+    const pid = parseInt(pidStr, 10);
+
+    try {
+        process.kill(pid, "SIGTERM");
+    } catch {
+        process.stderr.write(`Warning: process ${pid} already exited\n`);
+    }
+
+    try { fs.unlinkSync(pidPath); } catch {}
+
+    process.stdout.write(`Stopped diagnostics (PID ${pid})\n`);
+    process.exit(0);
+}
+
+// -- Diagnostics: dump --
+// Reads a diagnostics log file (.har or .jsonl), aggregates events,
+// and prints a summary as formatted JSON. Finds most recent log if no path given.
+// Auto-discovers both .har and .jsonl files and picks the most recent by mtime.
+
+function diagnosticsDump(args) {
+    let logPath = args.output;
+
+    if (!logPath) {
+        // Find most recent diagnostics log (.har or .jsonl) by mtime in /tmp
+        const tmpFiles = fs.readdirSync("/tmp")
+            .filter((f) => f.startsWith("browser-diagnostics-") && (f.endsWith(".jsonl") || f.endsWith(".har")))
+            .map((f) => {
+                const fullPath = "/tmp/" + f;
+                return { path: fullPath, mtime: fs.statSync(fullPath).mtimeMs };
+            })
+            .sort((a, b) => b.mtime - a.mtime);
+
+        if (tmpFiles.length === 0) {
+            process.stderr.write("No diagnostics log found\n");
+            process.exit(1);
+        }
+        logPath = tmpFiles[0].path;
+    }
+
+    let content;
+    try {
+        content = fs.readFileSync(logPath, "utf8");
+    } catch {
+        process.stderr.write(`Cannot read file: ${logPath}\n`);
+        process.exit(1);
+    }
+
+    // HAR format summary
+    if (logPath.endsWith(".har")) {
+        let harObj;
+        try {
+            harObj = JSON.parse(content);
+        } catch {
+            process.stderr.write(`Cannot parse HAR file: ${logPath}\n`);
+            process.exit(1);
+        }
+
+        const entries = harObj.log && harObj.log.entries ? harObj.log.entries : [];
+        const byStatus = {};
+        let failures = 0;
+        const failedUrls = [];
+        const waitTimes = [];
+
+        for (const entry of entries) {
+            const status = entry.response.status;
+            byStatus[status] = (byStatus[status] || 0) + 1;
+            if (status === 0) {
+                failures++;
+                if (failedUrls.length < 10) {
+                    failedUrls.push(entry.request.url);
+                }
+            }
+            if (entry.timings && entry.timings.wait > -1) {
+                waitTimes.push(entry.timings.wait);
+            }
+        }
+
+        const avgWait = waitTimes.length > 0
+            ? Math.round(waitTimes.reduce((sum, t) => sum + t, 0) / waitTimes.length)
+            : -1;
+        const maxWait = waitTimes.length > 0
+            ? Math.round(Math.max(...waitTimes))
+            : -1;
+
+        const summary = {
+            file: logPath,
+            format: "har",
+            entries: entries.length,
+            network: {
+                requests: entries.length,
+                byStatus,
+                failures,
+                failedUrls,
+                timing: { avgWait, maxWait },
+            },
+        };
+
+        process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+        process.exit(0);
+    }
+
+    // JSONL format summary (existing logic)
+    const lines = content.trim().split("\n").filter(Boolean);
+
+    const consoleCounts = { errors: 0, warnings: 0, exceptions: 0, info: 0, log: 0, debug: 0 };
+    const networkCounts = { requests: 0, responses: 0, failures: 0 };
+    const failedUrls = [];
+
+    for (const line of lines) {
+        let record;
+        try {
+            record = JSON.parse(line);
+        } catch {
+            continue;
+        }
+
+        if (record.kind === "console") {
+            switch (record.level) {
+                case "error": consoleCounts.errors++; break;
+                case "warning": consoleCounts.warnings++; break;
+                case "exception": consoleCounts.exceptions++; break;
+                case "info": consoleCounts.info++; break;
+                case "log": consoleCounts.log++; break;
+                case "debug": consoleCounts.debug++; break;
+            }
+        } else if (record.kind === "network") {
+            switch (record.event) {
+                case "request": networkCounts.requests++; break;
+                case "response": networkCounts.responses++; break;
+                case "failed":
+                    networkCounts.failures++;
+                    if (failedUrls.length < 10) {
+                        failedUrls.push(record.url || record.error || "unknown");
+                    }
+                    break;
+            }
+        }
+    }
+
+    const summary = {
+        file: logPath,
+        entries: lines.length,
+        console: consoleCounts,
+        network: {
+            requests: networkCounts.requests,
+            responses: networkCounts.responses,
+            failures: networkCounts.failures,
+            failedUrls,
+        },
+    };
+
+    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+    process.exit(0);
+}
+
+// -- Mode: diagnostics --
+// Dispatches to sub-mode helpers based on args flags.
+// stop and dump do not need a WebSocket; snapshot and live open their own.
+
+async function modeDiagnostics(args) {
+    if (args.stop) {
+        diagnosticsStop();
+        return;
+    }
+
+    if (args.dump) {
+        diagnosticsDump(args);
+        return;
+    }
+
+    // Snapshot and live both need a CDP page target
+    const port = resolvePort(args);
+    let wsUrl;
+    try {
+        wsUrl = await discoverPageTarget(port);
+    } catch (err) {
+        process.stderr.write(`Cannot connect to Chrome on port ${port}\n`);
+        process.stderr.write("Ensure Chrome is running: browser.sh ensure\n");
+        process.exit(1);
+    }
+
+    if (args.live) {
+        await diagnosticsLive(wsUrl, args);
+        return;
+    }
+
+    // Default sub-mode: snapshot
+    await diagnosticsSnapshot(wsUrl, args);
 }
 
 // -- Main --
@@ -1726,6 +2549,11 @@ async function main() {
 
     if (!args.mode) {
         printUsage();
+    }
+
+    if (args.mode === "diagnostics") {
+        await modeDiagnostics(args);
+        return;
     }
 
     const port = resolvePort(args);
