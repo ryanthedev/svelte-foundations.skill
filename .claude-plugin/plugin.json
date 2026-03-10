@@ -1,0 +1,10 @@
+{
+  "name": "svelte-foundations",
+  "version": "0.1.0",
+  "description": "Svelte and SvelteKit foundation skills — documentation search, development guidance, and browser automation",
+  "author": {
+    "name": "r"
+  },
+  "license": "MIT",
+  "keywords": ["svelte", "sveltekit", "documentation", "web", "skills", "browser", "chrome", "cdp", "automation"]
+}
