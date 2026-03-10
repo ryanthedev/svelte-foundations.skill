@@ -1,7 +1,7 @@
 # Plan: Expand svelte-foundations Plugin (v0.1.0 → v0.3.0)
 
 **Created:** 2026-03-10
-**Status:** in-progress
+**Status:** complete
 
 ## Context
 

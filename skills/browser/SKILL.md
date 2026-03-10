@@ -8,7 +8,8 @@ description: Control a web browser via Chrome DevTools Protocol — take screens
   "accessibility tree", "open URL", "evaluate in browser", "Chrome", "page source",
   "inspect element", "type in browser", "fill form in browser", "what does the page
   look like", "form fill", "form select", "wait for element", "wait for navigation",
-  "shadow DOM", "wait for idle".
+  "shadow DOM", "wait for idle", "scroll to", "dismiss dialog", "close modal",
+  "extract data", "scrape page".
 allowed-tools: Bash, Read, Agent
 ---
 
@@ -53,13 +54,21 @@ All scripts live at `${CLAUDE_SKILL_DIR}/scripts/`. Run them with Bash.
 | Check Chrome status     | browser.sh status [--port PORT]                    |
 | Navigate to URL         | cdp-browser.js navigate --url URL [--port PORT]    |
 | Evaluate JS expression  | cdp-browser.js evaluate "expr" [--port PORT]       |
-| Fill form field         | cdp-browser.js form --action fill --selector SEL --text TEXT [--clear] |
-| Select from dropdown    | cdp-browser.js form --action select --selector SEL --text FILTER --option TEXT |
-| Read form value         | cdp-browser.js form --action read --selector SEL   |
-| Submit form             | cdp-browser.js form --action submit --selector SEL [--navigation] |
+| Fill form field         | cdp-browser.js form --action fill --selector SEL --text TEXT [--clear] [--match-text T] [--visible] [--nth N] |
+| Select from dropdown    | cdp-browser.js form --action select --selector SEL --text FILTER --option TEXT [--match-text T] [--visible] [--nth N] |
+| Read form value         | cdp-browser.js form --action read --selector SEL [--match-text T] [--visible] [--nth N] |
+| Submit form             | cdp-browser.js form --action submit --selector SEL [--navigation] [--match-text T] [--visible] [--nth N] |
 | Wait for navigation     | cdp-browser.js wait --navigation [--timeout MS]    |
 | Wait for element        | cdp-browser.js wait --selector SEL [--timeout MS]  |
 | Wait for idle           | cdp-browser.js wait --idle [--timeout MS]          |
+| Scroll to element       | cdp-browser.js scroll --to-selector SEL [--pierce] [--match-text T] [--visible] [--nth N] |
+| Scroll by offset        | cdp-browser.js scroll --by N                       |
+| Scroll to bottom/top    | cdp-browser.js scroll --to-bottom \| --to-top      |
+| Dismiss dialog/overlay  | cdp-browser.js dismiss                              |
+| Extract structured data | cdp-browser.js extract --selector SEL [--fields "name:.sel,..."] [--pierce] |
+| Click all matching      | cdp-browser.js click --selector SEL --all [--aria-expanded true\|false] [--delay MS] [--pierce] [--match-text T] [--visible] |
+| Collect expandable data | cdp-browser.js collect --selector SEL --read-selector SEL [--close] [--delay MS] [--pierce] [--match-text T] [--visible] [--aria-expanded VAL] |
+| Evaluate from file      | cdp-browser.js evaluate --file PATH [--json]        |
 
 ---
 
@@ -158,13 +167,19 @@ Dispatch Agent:
     - cdp-browser.js dom             → full page HTML
     - cdp-browser.js dom --selector SEL → HTML of a specific element
     - cdp-browser.js accessibility   → full accessibility tree JSON
-    - cdp-browser.js click --selector SEL [--pierce] → click element by CSS selector
+    - cdp-browser.js click --selector SEL [--pierce] [--match-text TEXT] [--visible] [--nth N] → click element by CSS selector
     - cdp-browser.js click --x X --y Y   → click at coordinates
     - cdp-browser.js type --text TXT → type text into focused element
     - cdp-browser.js navigate --url URL  → navigate to page
     - cdp-browser.js evaluate "expr" → evaluate JS in page context
+    - cdp-browser.js evaluate --file PATH [--json] → evaluate JS from file
     - cdp-browser.js form --action fill|select|submit|read [flags] → form interaction
     - cdp-browser.js wait --navigation|--selector SEL|--idle [--timeout MS] → wait for state
+    - cdp-browser.js scroll --to-selector SEL|--by N|--to-bottom|--to-top → scroll page
+    - cdp-browser.js dismiss → dismiss topmost dialog/overlay
+    - cdp-browser.js extract --selector SEL [--fields "name:.sel,..."] → extract data
+    - cdp-browser.js click --selector SEL --all [--aria-expanded VAL] [--delay MS] → click all matching elements
+    - cdp-browser.js collect --selector SEL --read-selector SEL [--close] [--delay MS] → click-read-close loop
 
     TASK: [insert what the user wants to do]
 
@@ -208,8 +223,18 @@ Dispatch Agent:
 - Use `form --action fill` instead of separate click + type for form fields (handles focus, clear, and text input in one call).
 - Use `wait --selector` after actions that trigger async rendering.
 - Use `--pierce` flag when targeting elements inside web components (shadow DOM). Form mode uses pierce by default.
+- Use `--match-text` to filter elements by visible text content when a CSS selector matches multiple elements.
+- Use `--visible` to skip hidden/zero-size elements. Combine with `--nth` to pick a specific match (0-indexed).
 - The `form --action select` command handles combobox interaction in one call (open, type, wait, click option).
 - For CDP interaction recipes (combobox, date picker, dialog, tabs, accordion), see `references/interaction-patterns.md`.
+- Use `scroll --to-selector` to bring off-screen elements into view before clicking or screenshotting. Supports `--pierce`, `--match-text`, `--visible`, `--nth`.
+- Use `scroll --by 500` to scroll down 500px, or `--by -300` to scroll up. Use `--to-bottom` / `--to-top` for extremes.
+- Use `dismiss` to close modal dialogs and overlays. It finds the topmost dialog (by z-index), looks for a close button, and falls back to Escape.
+- Use `extract --selector ".card" --fields "name:.title,price:.price"` to scrape structured data from repeated elements. Output goes to `/tmp` if large.
+- Use `evaluate --file script.js` to run a JS file in the page context. Add `--json` for pretty-printed JSON output.
+- Evaluate mode auto-injects `querySelectorDeep` and `querySelectorAllDeep` helpers into the expression scope for shadow DOM queries.
+- Use `click --all --selector "button.toggle"` to click every matching element. Add `--aria-expanded false` to only click collapsed toggles. Add `--delay 200` for a pause between clicks.
+- Use `collect --selector "button.accordion" --read-selector ".panel-content" --close` to open each accordion, read its content, and close it again. Output is a JSON array of text strings.
 
 ## Context Efficiency
 

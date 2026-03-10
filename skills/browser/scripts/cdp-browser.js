@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // cdp-browser.js -- Chrome DevTools Protocol client for browser automation
-// Modes: screenshot, dom, accessibility, click, type, navigate, evaluate, form, wait
+// Modes: screenshot, dom, accessibility, click, type, navigate, evaluate, form, wait, scroll, dismiss, extract, collect
 // Requires Node 22+ (native WebSocket, native fetch)
 
 "use strict";
@@ -27,6 +27,44 @@ const QUERY_SELECTOR_DEEP_JS = `(function(selector) {
     }
     return search(document);
 })`;
+
+// -- Shadow DOM piercing query (all matches) --
+// Like QUERY_SELECTOR_DEEP_JS but returns ALL matching elements across shadow roots.
+// Used by the filter path in resolveElement when matchText, visible, or nth is set.
+
+const QUERY_SELECTOR_ALL_DEEP_JS = `(function(selector) {
+    var results = [];
+    function search(root) {
+        var matches = root.querySelectorAll(selector);
+        for (var i = 0; i < matches.length; i++) results.push(matches[i]);
+        var all = root.querySelectorAll('*');
+        for (var j = 0; j < all.length; j++) {
+            if (all[j].shadowRoot) search(all[j].shadowRoot);
+        }
+    }
+    search(document);
+    return results;
+})`;
+
+// -- Shadow DOM piercing text extraction --
+// Recursively walks shadow DOMs to collect all text content from an element.
+// Standard .textContent misses text inside shadow roots; this traverses them.
+
+const TEXT_CONTENT_DEEP_JS = `function deepText(el) {
+    if (!el) return "";
+    if (!el.shadowRoot) return el.textContent.trim();
+    var text = "";
+    function walk(node) {
+        if (node.nodeType === 3) { text += node.textContent; return; }
+        if (node.nodeType !== 1) return;
+        if (node.shadowRoot) {
+            node.shadowRoot.childNodes.forEach(walk);
+        }
+        node.childNodes.forEach(walk);
+    }
+    walk(el);
+    return text.trim();
+}`;
 
 // -- Node version check --
 
@@ -283,12 +321,83 @@ async function dispatchClick(client, x, y) {
 
 // -- Helper: resolveElement --
 // Finds an element by CSS selector and returns its center coordinates.
-// Tries standard DOM.querySelector first (fast path). If not found and pierce=true,
-// falls back to shadow DOM piercing via Runtime.evaluate.
-// Returns { nodeId?, objectId?, x, y, method } or null if not found.
+// Supports two paths:
+//   Fast path (no filters): DOM.querySelector, then optional shadow DOM pierce.
+//   Filter path (matchText, visible, or nth): collects all matches in page context,
+//     applies text/visibility/nth filters, returns center of chosen element.
+// Returns { nodeId?, objectId?, x, y, method, matchCount? } or null if not found.
 
-async function resolveElement(client, selector, { pierce = false } = {}) {
-    // Fast path: standard DOM query
+async function resolveElement(client, selector, {
+    pierce = false,
+    matchText = null,
+    visible = false,
+    nth = undefined,
+} = {}) {
+    const hasFilters = (matchText !== null) || visible || (nth !== undefined);
+
+    // -- Filter path: collect all matches, apply filters in page context --
+    if (hasFilters) {
+        const collectExpr = pierce
+            ? `${QUERY_SELECTOR_ALL_DEEP_JS}(${JSON.stringify(selector)})`
+            : `Array.from(document.querySelectorAll(${JSON.stringify(selector)}))`;
+
+        const filterFn = `(function() {
+            var elements = ${collectExpr};
+            var total = elements.length;
+            var matchText = ${JSON.stringify(matchText)};
+            var filterVisible = ${JSON.stringify(visible)};
+            var nth = ${JSON.stringify(nth)};
+
+            var filtered = elements;
+            if (matchText !== null) {
+                filtered = filtered.filter(function(el) {
+                    return el.textContent.includes(matchText);
+                });
+            }
+            if (filterVisible) {
+                filtered = filtered.filter(function(el) {
+                    var r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                });
+            }
+            var filteredCount = filtered.length;
+            var pick = (nth !== null && nth !== undefined) ? nth : 0;
+            if (pick < 0 || pick >= filteredCount) return null;
+
+            var chosen = filtered[pick];
+            var rect = chosen.getBoundingClientRect();
+            return {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+                total: total,
+                filtered: filteredCount
+            };
+        })()`;
+
+        const evalResult = await client.send("Runtime.evaluate", {
+            expression: filterFn,
+            returnByValue: true,
+        });
+
+        if (
+            evalResult.exceptionDetails ||
+            !evalResult.result ||
+            evalResult.result.subtype === "null" ||
+            evalResult.result.value === null
+        ) {
+            return null;
+        }
+
+        const val = evalResult.result.value;
+        return {
+            x: val.x,
+            y: val.y,
+            method: "filter",
+            matchCount: val.filtered,
+        };
+    }
+
+    // -- Fast path: standard DOM query (no filters) --
     const doc = await client.send("DOM.getDocument", { depth: 0 });
     const queryResult = await client.send("DOM.querySelector", {
         nodeId: doc.root.nodeId,
@@ -340,24 +449,128 @@ async function resolveElement(client, selector, { pierce = false } = {}) {
     return null;
 }
 
+// -- Helper: collectAllElementCoords --
+// Collects center coordinates for ALL elements matching a selector.
+// Applies matchText, visible, pierce, and ariaExpanded filters in page context.
+// Returns array of {x, y} objects.
+
+async function collectAllElementCoords(client, args) {
+    const collectExpr = args.pierce
+        ? `${QUERY_SELECTOR_ALL_DEEP_JS}(${JSON.stringify(args.selector)})`
+        : `Array.from(document.querySelectorAll(${JSON.stringify(args.selector)}))`;
+
+    const filterFn = `(function() {
+        var elements = ${collectExpr};
+        var matchText = ${JSON.stringify(args.matchText || null)};
+        var filterVisible = ${JSON.stringify(!!args.visible)};
+        var ariaExpanded = ${JSON.stringify(args.ariaExpanded !== undefined ? args.ariaExpanded : null)};
+
+        var filtered = elements;
+        if (matchText !== null) {
+            filtered = filtered.filter(function(el) {
+                return el.textContent.includes(matchText);
+            });
+        }
+        if (filterVisible) {
+            filtered = filtered.filter(function(el) {
+                var r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+            });
+        }
+        if (ariaExpanded !== null) {
+            filtered = filtered.filter(function(el) {
+                return el.getAttribute("aria-expanded") === ariaExpanded;
+            });
+        }
+
+        var coords = [];
+        for (var i = 0; i < filtered.length; i++) {
+            var rect = filtered[i].getBoundingClientRect();
+            coords.push({
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2
+            });
+        }
+        return coords;
+    })()`;
+
+    const evalResult = await client.send("Runtime.evaluate", {
+        expression: filterFn,
+        returnByValue: true,
+    });
+
+    if (
+        evalResult.exceptionDetails ||
+        !evalResult.result ||
+        !evalResult.result.value
+    ) {
+        return [];
+    }
+
+    return evalResult.result.value;
+}
+
 // -- Mode: click --
 // Clicks an element by CSS selector or explicit coordinates.
 // Sequence: mouseMoved -> mousePressed -> mouseReleased (matches real browser behavior).
 
 async function modeClick(client, args) {
+    // -- Batch path: click ALL matching elements --
+    if (args.all) {
+        if (!args.selector) {
+            process.stderr.write("Error: click --all requires --selector\n");
+            client.close();
+            process.exit(1);
+        }
+
+        const coords = await collectAllElementCoords(client, args);
+
+        if (coords.length === 0) {
+            process.stderr.write(`No elements match: ${args.selector}\n`);
+            client.close();
+            process.exit(1);
+        }
+
+        for (let idx = 0; idx < coords.length; idx++) {
+            await dispatchClick(client, coords[idx].x, coords[idx].y);
+            if (args.delay > 0 && idx < coords.length - 1) {
+                await new Promise((r) => setTimeout(r, args.delay));
+            }
+        }
+
+        process.stdout.write(
+            `Clicked ${coords.length} elements matching ${args.selector}\n`
+        );
+        client.close();
+        process.exit(0);
+    }
+
+    // -- Single element path --
     let x, y;
+    let matchCount = null;
 
     if (args.selector) {
         const resolved = await resolveElement(client, args.selector, {
             pierce: args.pierce,
+            matchText: args.matchText,
+            visible: args.visible,
+            nth: args.nth,
         });
         if (!resolved) {
-            process.stderr.write(`No element matches: ${args.selector}\n`);
+            const filters = [];
+            if (args.matchText) filters.push(`matchText="${args.matchText}"`);
+            if (args.visible) filters.push("visible");
+            if (args.nth !== undefined) filters.push(`nth=${args.nth}`);
+            const filterDesc = filters.length > 0 ? ` [filters: ${filters.join(", ")}]` : "";
+            process.stderr.write(`No element matches: ${args.selector}${filterDesc}\n`);
             client.close();
             process.exit(1);
         }
         x = resolved.x;
         y = resolved.y;
+        if (resolved.matchCount !== undefined) {
+            matchCount = resolved.matchCount;
+        }
     } else if (args.x !== undefined && args.y !== undefined) {
         x = args.x;
         y = args.y;
@@ -370,7 +583,8 @@ async function modeClick(client, args) {
     await dispatchClick(client, x, y);
 
     const target = args.selector ? ` (selector: ${args.selector})` : "";
-    process.stdout.write(`Clicked at (${x}, ${y})${target}\n`);
+    const matchInfo = matchCount !== null ? ` (${matchCount} matches)` : "";
+    process.stdout.write(`Clicked at (${x}, ${y})${target}${matchInfo}\n`);
     client.close();
     process.exit(0);
 }
@@ -436,19 +650,448 @@ async function modeNavigate(client, args) {
     process.exit(0);
 }
 
+// -- Mode: scroll --
+// Scrolls the page by selector, pixel offset, or to top/bottom.
+// --to-selector uses resolveElement (with pierce/matchText/visible/nth support)
+// then scrolls that element into view at the center of the viewport.
+
+async function modeScroll(client, args) {
+    if (args.toSelector) {
+        const resolved = await resolveElement(client, args.toSelector, {
+            pierce: args.pierce,
+            matchText: args.matchText,
+            visible: args.visible,
+            nth: args.nth,
+        });
+        if (!resolved) {
+            process.stderr.write(`No element matches: ${args.toSelector}\n`);
+            client.close();
+            process.exit(1);
+        }
+
+        // Use Runtime.evaluate to scrollIntoView on the matched element
+        const scrollExpr = args.pierce
+            ? `${QUERY_SELECTOR_DEEP_JS}(${JSON.stringify(args.toSelector)})`
+            : `document.querySelector(${JSON.stringify(args.toSelector)})`;
+
+        await client.send("Runtime.evaluate", {
+            expression: `(${scrollExpr}).scrollIntoView({block:'center', behavior:'instant'})`,
+            awaitPromise: false,
+            returnByValue: true,
+        });
+
+        process.stdout.write(`Scrolled to ${args.toSelector}\n`);
+    } else if (args.scrollBy !== null) {
+        await client.send("Runtime.evaluate", {
+            expression: `window.scrollBy(0, ${args.scrollBy})`,
+            returnByValue: true,
+        });
+        process.stdout.write(`Scrolled by ${args.scrollBy}px\n`);
+    } else if (args.toBottom) {
+        await client.send("Runtime.evaluate", {
+            expression: `window.scrollTo(0, document.body.scrollHeight)`,
+            returnByValue: true,
+        });
+        process.stdout.write("Scrolled to bottom\n");
+    } else if (args.toTop) {
+        await client.send("Runtime.evaluate", {
+            expression: `window.scrollTo(0, 0)`,
+            returnByValue: true,
+        });
+        process.stdout.write("Scrolled to top\n");
+    } else {
+        process.stderr.write(
+            "Error: scroll requires --to-selector, --by, --to-bottom, or --to-top\n"
+        );
+        client.close();
+        process.exit(1);
+    }
+
+    client.close();
+    process.exit(0);
+}
+
+// -- Mode: dismiss --
+// Finds and dismisses the topmost open dialog/overlay on the page.
+// Walks shadow DOMs to find dialogs, sorts by z-index, and attempts
+// to close via close button click or Escape key.
+
+async function modeDismiss(client, args) {
+    const findDialogExpr = `(function() {
+        var dialogs = [];
+
+        function collectDialogs(root) {
+            // Standard open dialogs
+            var openDialogs = root.querySelectorAll('dialog[open]');
+            for (var i = 0; i < openDialogs.length; i++) dialogs.push(openDialogs[i]);
+
+            // ARIA role dialogs that are visible
+            var roleDialogs = root.querySelectorAll('[role="dialog"]');
+            for (var j = 0; j < roleDialogs.length; j++) {
+                var r = roleDialogs[j].getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) dialogs.push(roleDialogs[j]);
+            }
+
+            // Custom dialog elements (auro-dialog, fs-auro-dialog)
+            var customDialogs = root.querySelectorAll('auro-dialog, fs-auro-dialog');
+            for (var k = 0; k < customDialogs.length; k++) dialogs.push(customDialogs[k]);
+
+            // High z-index overlays (z-index > 999, visible, not tiny)
+            var allEls = root.querySelectorAll('*');
+            for (var m = 0; m < allEls.length; m++) {
+                var style = window.getComputedStyle(allEls[m]);
+                var z = parseInt(style.zIndex, 10);
+                if (z > 999 && style.display !== 'none' && style.visibility !== 'hidden') {
+                    var rect = allEls[m].getBoundingClientRect();
+                    if (rect.width > 50 && rect.height > 50) {
+                        dialogs.push(allEls[m]);
+                    }
+                }
+            }
+
+            // Recurse into shadow roots
+            var shadowed = root.querySelectorAll('*');
+            for (var s = 0; s < shadowed.length; s++) {
+                if (shadowed[s].shadowRoot) collectDialogs(shadowed[s].shadowRoot);
+            }
+        }
+
+        collectDialogs(document);
+
+        // Deduplicate
+        var unique = [];
+        var seen = new Set();
+        for (var u = 0; u < dialogs.length; u++) {
+            if (!seen.has(dialogs[u])) {
+                seen.add(dialogs[u]);
+                unique.push(dialogs[u]);
+            }
+        }
+
+        // Sort by z-index descending (topmost first)
+        unique.sort(function(a, b) {
+            var zA = parseInt(window.getComputedStyle(a).zIndex, 10) || 0;
+            var zB = parseInt(window.getComputedStyle(b).zIndex, 10) || 0;
+            return zB - zA;
+        });
+
+        if (unique.length === 0) return null;
+
+        var topmost = unique[0];
+
+        // Find close button in topmost dialog
+        function findCloseButton(el) {
+            var buttons = el.querySelectorAll('button');
+            for (var b = 0; b < buttons.length; b++) {
+                var label = (buttons[b].getAttribute('aria-label') || '').toLowerCase();
+                var text = buttons[b].textContent.trim().toLowerCase();
+                if (label.indexOf('close') !== -1 || label.indexOf('dismiss') !== -1 ||
+                    text === 'close' || text === 'dismiss' || text === 'x') {
+                    var rect = buttons[b].getBoundingClientRect();
+                    return {
+                        method: 'click',
+                        element: buttons[b].tagName + (buttons[b].className ? '.' + buttons[b].className.split(' ')[0] : ''),
+                        coords: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+                    };
+                }
+            }
+            // Also check shadow root of the dialog itself
+            if (el.shadowRoot) {
+                var shadowBtns = el.shadowRoot.querySelectorAll('button');
+                for (var sb = 0; sb < shadowBtns.length; sb++) {
+                    var sLabel = (shadowBtns[sb].getAttribute('aria-label') || '').toLowerCase();
+                    var sText = shadowBtns[sb].textContent.trim().toLowerCase();
+                    if (sLabel.indexOf('close') !== -1 || sLabel.indexOf('dismiss') !== -1 ||
+                        sText === 'close' || sText === 'dismiss' || sText === 'x') {
+                        var sRect = shadowBtns[sb].getBoundingClientRect();
+                        return {
+                            method: 'click',
+                            element: shadowBtns[sb].tagName + (shadowBtns[sb].className ? '.' + shadowBtns[sb].className.split(' ')[0] : ''),
+                            coords: { x: sRect.x + sRect.width / 2, y: sRect.y + sRect.height / 2 }
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        var closeBtn = findCloseButton(topmost);
+        if (closeBtn) {
+            return { dismissed: true, method: closeBtn.method, element: closeBtn.element, coords: closeBtn.coords };
+        }
+
+        // Fallback: try Escape key
+        return { dismissed: false, method: 'escape', element: topmost.tagName, coords: null };
+    })()`;
+
+    const evalResult = await client.send("Runtime.evaluate", {
+        expression: findDialogExpr,
+        returnByValue: true,
+    });
+
+    if (
+        evalResult.exceptionDetails ||
+        !evalResult.result ||
+        evalResult.result.subtype === "null" ||
+        evalResult.result.value === null
+    ) {
+        process.stdout.write("No open dialog or overlay found\n");
+        client.close();
+        process.exit(0);
+    }
+
+    const info = evalResult.result.value;
+
+    if (info.method === "click" && info.coords) {
+        await dispatchClick(client, info.coords.x, info.coords.y);
+        process.stdout.write(
+            `Dismissed dialog via click on ${info.element} at (${info.coords.x}, ${info.coords.y})\n`
+        );
+    } else if (info.method === "escape") {
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "Escape",
+            code: "Escape",
+            windowsVirtualKeyCode: 27,
+            nativeVirtualKeyCode: 27,
+        });
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "Escape",
+            code: "Escape",
+            windowsVirtualKeyCode: 27,
+            nativeVirtualKeyCode: 27,
+        });
+        process.stdout.write(
+            `Sent Escape key to dismiss ${info.element} (no close button found)\n`
+        );
+    }
+
+    client.close();
+    process.exit(0);
+}
+
+// -- Helper: parseFields --
+// Parses a fields string like "name:.title,price:.price-tag" into
+// an array of {name, selector} objects. Each entry is split by first colon.
+
+function parseFields(fieldsStr) {
+    return fieldsStr.split(",").map(function (entry) {
+        const colonIdx = entry.indexOf(":");
+        if (colonIdx === -1) {
+            return { name: entry.trim(), selector: entry.trim() };
+        }
+        return {
+            name: entry.slice(0, colonIdx).trim(),
+            selector: entry.slice(colonIdx + 1).trim(),
+        };
+    });
+}
+
+// -- Mode: extract --
+// Extracts structured data from repeated container elements.
+// --selector selects the container elements, --fields maps child selectors
+// to named fields. Without --fields, extracts each container's textContent.
+
+async function modeExtract(client, args) {
+    if (!args.selector) {
+        process.stderr.write("Error: extract requires --selector\n");
+        client.close();
+        process.exit(1);
+    }
+
+    const fields = args.fields ? parseFields(args.fields) : null;
+    const queryFn = args.pierce
+        ? `${QUERY_SELECTOR_ALL_DEEP_JS}(${JSON.stringify(args.selector)})`
+        : `document.querySelectorAll(${JSON.stringify(args.selector)})`;
+
+    let extractBody;
+    if (fields) {
+        // Build field extraction: for each container, querySelector each child selector
+        const fieldEntries = fields
+            .map(function (f) {
+                return `{ name: ${JSON.stringify(f.name)}, selector: ${JSON.stringify(f.selector)} }`;
+            })
+            .join(", ");
+
+        // Uses deepText for shadow DOM text extraction, and querySelectorDeep
+        // as fallback when pierce is enabled and querySelector returns null.
+        const pierceFlag = args.pierce ? "true" : "false";
+        extractBody = `(function() {
+            ${TEXT_CONTENT_DEEP_JS}
+            var querySelectorDeep = ${QUERY_SELECTOR_DEEP_JS};
+            var containers = ${queryFn};
+            var fieldDefs = [${fieldEntries}];
+            var usePierce = ${pierceFlag};
+            var results = [];
+            for (var i = 0; i < containers.length; i++) {
+                var row = {};
+                for (var j = 0; j < fieldDefs.length; j++) {
+                    var child = containers[i].querySelector(fieldDefs[j].selector);
+                    if (!child && usePierce && containers[i].shadowRoot) {
+                        child = querySelectorDeep(fieldDefs[j].selector);
+                    }
+                    row[fieldDefs[j].name] = child ? deepText(child) : null;
+                }
+                results.push(row);
+            }
+            return results;
+        })()`;
+    } else {
+        extractBody = `(function() {
+            ${TEXT_CONTENT_DEEP_JS}
+            var containers = ${queryFn};
+            var results = [];
+            for (var i = 0; i < containers.length; i++) {
+                results.push(deepText(containers[i]));
+            }
+            return results;
+        })()`;
+    }
+
+    const evalResult = await client.send("Runtime.evaluate", {
+        expression: extractBody,
+        returnByValue: true,
+    });
+
+    if (evalResult.exceptionDetails) {
+        const desc =
+            evalResult.exceptionDetails.exception?.description ||
+            evalResult.exceptionDetails.text ||
+            "Extract evaluation failed";
+        process.stderr.write(`Error: ${desc}\n`);
+        client.close();
+        process.exit(1);
+    }
+
+    const output = JSON.stringify(evalResult.result.value, null, 2) + "\n";
+    emitOutput(output, "browser-extract", ".json");
+    client.close();
+    process.exit(0);
+}
+
+// -- Mode: collect --
+// Click-read-close loop: clicks each toggle element, reads content from a
+// read-selector after a delay, optionally closes, and returns all results as JSON.
+// Useful for accordion/expandable patterns where content is only visible after click.
+
+async function modeCollect(client, args) {
+    if (!args.selector) {
+        process.stderr.write("Error: collect requires --selector\n");
+        client.close();
+        process.exit(1);
+    }
+    if (!args.readSelector) {
+        process.stderr.write("Error: collect requires --read-selector\n");
+        client.close();
+        process.exit(1);
+    }
+
+    const delay = args.delay !== undefined ? args.delay : 300;
+
+    // Collect all toggle element coordinates
+    const coords = await collectAllElementCoords(client, args);
+
+    if (coords.length === 0) {
+        process.stderr.write(`No elements match: ${args.selector}\n`);
+        client.close();
+        process.exit(1);
+    }
+
+    // Build the read expression that uses deepText for shadow DOM support
+    const readExpr = args.pierce
+        ? `(function() {
+            ${TEXT_CONTENT_DEEP_JS}
+            var el = ${QUERY_SELECTOR_DEEP_JS}(${JSON.stringify(args.readSelector)});
+            return el ? deepText(el) : null;
+        })()`
+        : `(function() {
+            ${TEXT_CONTENT_DEEP_JS}
+            var el = document.querySelector(${JSON.stringify(args.readSelector)});
+            return el ? deepText(el) : null;
+        })()`;
+
+    const results = [];
+    for (let idx = 0; idx < coords.length; idx++) {
+        // Click to open
+        await dispatchClick(client, coords[idx].x, coords[idx].y);
+        await new Promise((r) => setTimeout(r, delay));
+
+        // Read content from read-selector
+        const evalResult = await client.send("Runtime.evaluate", {
+            expression: readExpr,
+            returnByValue: true,
+        });
+
+        let text = null;
+        if (
+            !evalResult.exceptionDetails &&
+            evalResult.result &&
+            evalResult.result.value !== null &&
+            evalResult.result.value !== undefined
+        ) {
+            text = evalResult.result.value;
+        }
+        results.push(text);
+
+        // Close if requested
+        if (args.close) {
+            await dispatchClick(client, coords[idx].x, coords[idx].y);
+            await new Promise((r) => setTimeout(r, delay));
+        }
+    }
+
+    const output = JSON.stringify(results, null, 2) + "\n";
+    emitOutput(output, "browser-collect", ".json");
+    client.close();
+    process.exit(0);
+}
+
 // -- Mode: evaluate --
 // Evaluates a JavaScript expression in the page context.
 // Supports async expressions via awaitPromise.
 
 async function modeEvaluate(client, args) {
+    // --file reads expression from a file; error if both --file and positional arg
+    if (args.file && args.expression) {
+        process.stderr.write(
+            "Error: cannot use both --file and a positional expression\n"
+        );
+        client.close();
+        process.exit(1);
+    }
+
+    if (args.file) {
+        args.expression = fs.readFileSync(args.file, "utf8");
+    }
+
     if (!args.expression) {
         process.stderr.write("Error: evaluate requires an expression argument\n");
         client.close();
         process.exit(1);
     }
 
+    // Auto-IIFE wrapping: inject querySelectorDeep/querySelectorAllDeep helpers
+    // and wrap expression for consistent execution context.
+    // Skip if expression already starts with "(function".
+    let expression = args.expression;
+    if (!expression.trimStart().startsWith("(function")) {
+        const helpers =
+            `var querySelectorDeep = ${QUERY_SELECTOR_DEEP_JS}; ` +
+            `var querySelectorAllDeep = ${QUERY_SELECTOR_ALL_DEEP_JS}; `;
+
+        const isSingleExpression =
+            expression.indexOf(";") === -1 && expression.indexOf("\n") === -1;
+
+        if (isSingleExpression) {
+            expression = `(function(){ ${helpers}return ${expression}; })()`;
+        } else {
+            expression = `(function(){ ${helpers}${expression} })()`;
+        }
+    }
+
     const result = await client.send("Runtime.evaluate", {
-        expression: args.expression,
+        expression,
         awaitPromise: true,
         returnByValue: true,
     });
@@ -463,7 +1106,14 @@ async function modeEvaluate(client, args) {
         process.exit(1);
     }
 
-    process.stdout.write(JSON.stringify(result.result.value) + "\n");
+    let output;
+    if (args.json) {
+        output = JSON.stringify(result.result.value, null, 2);
+    } else {
+        output = JSON.stringify(result.result.value);
+    }
+
+    process.stdout.write(output + "\n");
     client.close();
     process.exit(0);
 }
@@ -491,6 +1141,9 @@ async function modeForm(client, args) {
         case "fill": {
             const resolved = await resolveElement(client, args.selector, {
                 pierce: true,
+                matchText: args.matchText,
+                visible: args.visible,
+                nth: args.nth,
             });
             if (!resolved) {
                 process.stderr.write(
@@ -542,6 +1195,9 @@ async function modeForm(client, args) {
             // Click the combobox/select to open it
             const resolved = await resolveElement(client, args.selector, {
                 pierce: true,
+                matchText: args.matchText,
+                visible: args.visible,
+                nth: args.nth,
             });
             if (!resolved) {
                 process.stderr.write(
@@ -564,7 +1220,6 @@ async function modeForm(client, args) {
             if (args.option) {
                 const optionResult = await client.send("Runtime.evaluate", {
                     expression: `(function() {
-                        ${QUERY_SELECTOR_DEEP_JS};
                         const opts = document.querySelectorAll('[role="option"]');
                         for (const opt of opts) {
                             if (opt.textContent.includes(${JSON.stringify(args.option)})) {
@@ -620,6 +1275,9 @@ async function modeForm(client, args) {
         case "submit": {
             const resolved = await resolveElement(client, args.selector, {
                 pierce: true,
+                matchText: args.matchText,
+                visible: args.visible,
+                nth: args.nth,
             });
             if (!resolved) {
                 process.stderr.write(
@@ -644,6 +1302,9 @@ async function modeForm(client, args) {
         case "read": {
             const resolved = await resolveElement(client, args.selector, {
                 pierce: true,
+                matchText: args.matchText,
+                visible: args.visible,
+                nth: args.nth,
             });
             if (!resolved) {
                 process.stderr.write(
@@ -868,6 +1529,21 @@ function parseArgs() {
         idle: false,
         pierce: false,
         timeout: null,
+        matchText: null,
+        visible: false,
+        nth: undefined,
+        toSelector: null,
+        scrollBy: null,
+        toBottom: false,
+        toTop: false,
+        fields: null,
+        file: null,
+        json: false,
+        all: false,
+        ariaExpanded: undefined,
+        delay: undefined,
+        readSelector: null,
+        close: false,
     };
 
     let i = 0;
@@ -921,6 +1597,54 @@ function parseArgs() {
             case "--timeout":
                 args.timeout = parseInt(argv[++i], 10);
                 break;
+            case "--match-text":
+                args.matchText = argv[++i];
+                break;
+            case "--visible":
+                args.visible = true;
+                break;
+            case "--nth":
+                args.nth = parseInt(argv[++i], 10);
+                break;
+            case "--to-selector":
+                args.toSelector = argv[++i];
+                break;
+            case "--by":
+                args.scrollBy = parseInt(argv[++i], 10);
+                break;
+            case "--to-bottom":
+                args.toBottom = true;
+                break;
+            case "--to-top":
+                args.toTop = true;
+                break;
+            case "--fields":
+                args.fields = argv[++i];
+                break;
+            case "--file":
+                args.file = argv[++i];
+                break;
+            case "--json":
+                args.json = true;
+                break;
+            case "--all":
+                args.all = true;
+                break;
+            case "--aria-expanded":
+                args.ariaExpanded = argv[++i];
+                break;
+            case "--delay":
+                args.delay = parseInt(argv[++i], 10);
+                break;
+            case "--read-selector":
+                args.readSelector = argv[++i];
+                break;
+            case "--close":
+                args.close = true;
+                break;
+            case "--expression":
+                args.expression = argv[++i];
+                break;
             default:
                 if (argv[i].startsWith("-")) {
                     process.stderr.write(`Error: Unknown option '${argv[i]}'\n`);
@@ -954,11 +1678,15 @@ function printUsage() {
         '  evaluate "expression"     Evaluate JS in page context\n' +
         "  form                      Interact with form elements\n" +
         "  wait                      Wait for navigation, element, or idle\n" +
+        "  scroll                    Scroll page by selector, offset, or position\n" +
+        "  dismiss                   Dismiss topmost open dialog or overlay\n" +
+        "  extract                   Extract structured data from repeated elements\n" +
+        "  collect                   Click-read-close loop for expandable content\n" +
         "\n" +
         "Options:\n" +
         "  --port <PORT>             CDP port (default: $CDP_PORT or 9222)\n" +
         "  --output <PATH>           Output file path (screenshot)\n" +
-        "  --selector <CSS>          CSS selector (dom, click, form, wait)\n" +
+        "  --selector <CSS>          CSS selector (dom, click, form, wait, extract)\n" +
         "  --x <N> --y <N>           Coordinates (click)\n" +
         "  --text <TEXT>             Text to type (type, form fill/select)\n" +
         "  --url <URL>               URL to navigate to (navigate)\n" +
@@ -969,8 +1697,24 @@ function printUsage() {
         "  --clear                    Clear field before filling (form fill)\n" +
         "  --navigation               Wait for URL change (wait, form submit)\n" +
         "  --idle                     Wait for network+DOM quiet (wait)\n" +
-        "  --pierce                   Pierce shadow DOM (click)\n" +
-        "  --timeout <MS>             Timeout in ms (wait, default: 10000)\n"
+        "  --pierce                   Pierce shadow DOM (click, scroll, extract)\n" +
+        "  --timeout <MS>             Timeout in ms (wait, default: 10000)\n" +
+        "  --match-text <TEXT>        Filter elements by visible text content\n" +
+        "  --visible                  Skip hidden elements (zero bounding rect)\n" +
+        "  --nth <N>                  Pick Nth match (0-indexed) after filtering\n" +
+        "  --to-selector <CSS>        Scroll element into view (scroll)\n" +
+        "  --by <N>                   Scroll by N pixels vertically (scroll)\n" +
+        "  --to-bottom                Scroll to page bottom (scroll)\n" +
+        "  --to-top                   Scroll to page top (scroll)\n" +
+        "  --fields <SPEC>            Field extraction spec: name:.sel,... (extract)\n" +
+        "  --file <PATH>              Read JS expression from file (evaluate)\n" +
+        "  --json                     Pretty-print result as JSON (evaluate)\n" +
+        "  --expression <EXPR>        JS expression (evaluate, alias for positional)\n" +
+        "  --all                      Click all matching elements (click)\n" +
+        "  --aria-expanded <VAL>      Filter by aria-expanded attribute (click --all, collect)\n" +
+        "  --delay <MS>               Delay between actions in ms (click --all: 0, collect: 300)\n" +
+        "  --read-selector <CSS>      Content selector to read after each click (collect)\n" +
+        "  --close                    Click toggle again to close after reading (collect)\n"
     );
     process.exit(1);
 }
@@ -1030,6 +1774,18 @@ async function main() {
             break;
         case "wait":
             await modeWait(client, args);
+            break;
+        case "scroll":
+            await modeScroll(client, args);
+            break;
+        case "dismiss":
+            await modeDismiss(client, args);
+            break;
+        case "extract":
+            await modeExtract(client, args);
+            break;
+        case "collect":
+            await modeCollect(client, args);
             break;
         default:
             process.stderr.write(`Error: Unknown mode '${args.mode}'\n`);
