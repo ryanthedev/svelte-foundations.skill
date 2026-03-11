@@ -9,7 +9,8 @@ A Claude Code plugin (`svelte-foundations`) that provides documentation search a
 - **sveltekit-docs** — searches official SvelteKit documentation
 - **browser** — controls Chrome/Chromium via CDP for screenshots, DOM inspection, accessibility trees, click/type/navigate, and JS evaluation
 - **diagnose** — diagnoses SvelteKit/Svelte errors using pattern matching and docs
-- **coding-agent** — autonomous agent that researches docs, writes Svelte 5 code, and verifies via browser
+- **coding** — loads Svelte 5 patterns, checklists, and doc context for coding sessions
+- **coding-agent** — autonomous agent that loads the coding skill, writes Svelte 5 code, and verifies via browser
 - **a11y-audit** — audits page accessibility via browser AX tree inspection
 
 ## Repository Structure
@@ -24,7 +25,7 @@ commands/
   sveltekit-docs.md          — Slash command for SvelteKit docs search
   browser.md                 — Slash command for browser automation
   diagnose.md                — Slash command for error diagnosis
-  coding.md                  — Slash command that dispatches coding-agent
+  coding.md                  — Slash command that loads coding skill + dispatches coding-agent
   a11y-audit.md              — Slash command for accessibility audit
 skills/
   svelte-docs/SKILL.md       — Skill definition (trigger words, workflow, search strategy)
@@ -36,6 +37,7 @@ skills/
   browser/scripts/cdp-browser.js — CDP client (screenshot, dom, accessibility, click, type, navigate, evaluate)
   _shared/scripts/vite.sh        — Vite dev server health check and environment detection
   _shared/references/            — Shared reference files (svelte5-patterns.md, sveltekit-checklist.md, workflow-checklist.md, migration-guide.md)
+  coding/SKILL.md                — Svelte 5 coding context (patterns, checklists, doc search)
   diagnose/SKILL.md              — Error diagnosis skill
   diagnose/references/           — Error pattern database
   a11y-audit/SKILL.md            — Accessibility audit skill
@@ -56,7 +58,7 @@ Doc skills are restricted to `Read`, `Grep`, and `Glob` tools. The browser skill
 
 Additional skills: diagnose combines Bash (health check), Grep/Read (docs + config), and Agent (browser error capture) for error diagnosis. a11y-audit dispatches Agent subagents to capture accessibility trees and check against an a11y checklist.
 
-Slash commands are registered via `.md` files in the `commands/` directory. Each command file has YAML frontmatter (`description`, `argument-hint`, `allowed-tools`) and invokes the corresponding skill or agent. Agents are defined in `agents/` as `.md` files with `name` and `description` frontmatter. The `coding` command dispatches `coding-agent` which autonomously researches docs, writes code, and verifies via browser.
+Slash commands are registered via `.md` files in the `commands/` directory. Each command file has YAML frontmatter (`description`, `argument-hint`, `allowed-tools`) and invokes the corresponding skill or agent. Agents are defined in `agents/` as `.md` files with `name` and `description` frontmatter. The `coding` command loads the coding skill into context first, then dispatches `coding-agent` for implementation. The coding skill can also be loaded standalone (e.g., alongside `code-foundations:code`) for doc-grounded guidance without agent dispatch.
 
 ## Key Conventions
 

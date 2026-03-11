@@ -28,7 +28,7 @@
 - [ ] No TypeScript errors (`npx svelte-check`)
 - [ ] Accessibility: labels on inputs, alt on images, semantic HTML
 - [ ] Error states handled (loading, error, empty)
-- [ ] Consider running sk-a11y-audit for accessibility review
+- [ ] Consider running `/svelte-foundations:a11y-audit` for accessibility review
 
 ## Common Gotchas
 

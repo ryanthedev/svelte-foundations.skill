@@ -1,16 +1,26 @@
 ---
-description: "SvelteKit coding agent — researches docs, writes Svelte 5 code, verifies in browser."
+description: "SvelteKit coding — loads Svelte 5 context, then dispatches coding agent."
 argument-hint: "[feature description or task]"
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "Agent", "Skill"]
 ---
 
 # /svelte-foundations:coding
 
-**Dispatch the coding agent to research docs, write code, and verify.**
+**Load coding context, then dispatch the coding agent.**
 
 ---
 
-## Step 1: Gather Context
+## Step 1: Load Coding Skill
+
+```
+Skill(svelte-foundations:coding)
+```
+
+This loads Svelte 5 patterns, workflow checklist, and searches docs for the task.
+
+---
+
+## Step 2: Gather Context
 
 Collect information before dispatching:
 
@@ -24,7 +34,7 @@ Note the top 3-5 relevant files.
 
 ---
 
-## Step 2: Dispatch Coding Agent
+## Step 3: Dispatch Coding Agent
 
 ```
 Agent(
@@ -32,7 +42,7 @@ Agent(
     description: "coding: [short task description]"
     prompt: |
         TASK: [task description]
-        TARGET FILES: [file paths found in Step 1, or "Not specified — search codebase"]
+        TARGET FILES: [file paths found in Step 2, or "Not specified — search codebase"]
         PROJECT CONTEXT: [any relevant context about the project]
 
         Research docs, write the implementation, and verify if possible.
@@ -42,7 +52,7 @@ Agent(
 
 ---
 
-## Step 3: Review Results
+## Step 4: Review Results
 
 When the agent returns:
 
@@ -53,7 +63,7 @@ When the agent returns:
 
 ---
 
-## Step 4: Suggest Follow-ups
+## Step 5: Suggest Follow-ups
 
 Based on what was built:
 

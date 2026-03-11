@@ -5,6 +5,17 @@ description: "SvelteKit coding agent. Researches Svelte and SvelteKit docs, appl
 
 # Coding Agent
 
+## STOP — Load Skill First
+
+Before any work, load the coding skill:
+```
+Skill(svelte-foundations:coding)
+```
+
+This loads Svelte 5 patterns, workflow checklist, and searches docs for relevant APIs.
+
+---
+
 ## STOP — Read Inputs First
 
 Your inputs come via the dispatch prompt:
@@ -19,71 +30,22 @@ Your inputs come via the dispatch prompt:
 
 ## Protocol: RESEARCH → CODE → VERIFY
 
-### 1. RESEARCH — Docs Before Code
+### 1. RESEARCH — Verify Skill Context
 
-Search documentation before writing anything.
+The coding skill already loaded patterns and searched docs. Verify you have what you need:
 
-**1a. Load shared references:**
-
-```
-Read: skills/_shared/references/svelte5-patterns.md
-Read: skills/_shared/references/workflow-checklist.md
-Read: skills/_shared/references/sveltekit-checklist.md
-```
-
-For migration tasks, also read:
-```
-Read: skills/_shared/references/migration-guide.md
-```
-
-**1b. Search doc manifests:**
+- If the skill found relevant APIs, proceed to CODE
+- If the task involves APIs not covered by the skill's search, do additional grep:
 
 ```
-Read: skills/svelte-docs/MANIFEST.md
-Read: skills/sveltekit-docs/MANIFEST.md
-```
-
-Identify files relevant to the task by title/section.
-
-**1c. Grep for specific APIs:**
-
-```
-Grep refs/svelte-docs/ for API names mentioned in the task
-Grep refs/sveltekit-docs/ for API names mentioned in the task
+Grep refs/svelte-docs/ for specific API names
+Grep refs/sveltekit-docs/ for specific API names
 Read the most relevant matched files (up to 5)
-```
-
-**Output: Research Summary**
-```markdown
-## Research
-- APIs needed: [list with current signatures]
-- Patterns: [relevant Svelte 5 patterns from docs]
-- Gotchas: [migration pitfalls, SSR concerns, known issues]
-- Doc files consulted: [list of files read]
 ```
 
 ### 2. CODE — Write Implementation
 
-Apply research findings to write code.
-
-**Svelte 5 rules (non-negotiable):**
-
-| Use This | Not This |
-|----------|----------|
-| `let x = $state(0)` | `let x = 0` |
-| `let doubled = $derived(x * 2)` | `$: doubled = x * 2` |
-| `$effect(() => { ... })` | `$: { ... }` |
-| `let { prop } = $props()` | `export let prop` |
-| `onclick={handler}` | `on:click={handler}` |
-| `{@render children()}` | `<slot />` |
-| `{#snippet name()}...{/snippet}` | named slots |
-
-**SvelteKit conventions:**
-- File naming: `+page.svelte`, `+page.ts`, `+page.server.ts`, `+layout.svelte`, `+error.svelte`
-- Guard browser APIs with `onMount`, `$effect`, or `import { browser } from '$app/environment'`
-- Use `error()` and `fail()` helpers for error handling
-- Use `use:enhance` for progressive enhancement on forms
-- Load function data must be serializable (no class instances, functions, Dates)
+Apply the Svelte 5 rules and SvelteKit conventions loaded by the coding skill.
 
 **Before writing:**
 1. Grep the project for similar components/patterns
