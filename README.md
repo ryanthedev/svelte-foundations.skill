@@ -1,6 +1,6 @@
 # svelte-foundations
 
-A Claude Code plugin for Svelte and SvelteKit development. Search official docs, drive Chrome via CDP, diagnose errors, guide coding patterns, and audit accessibility.
+A Claude Code plugin for Svelte and SvelteKit development. Search official docs, drive Chrome via CDP, diagnose errors, write Svelte 5 code with doc-grounded research, and audit accessibility.
 
 ## Install
 
@@ -19,9 +19,9 @@ claude plugin add ryanthedev/svelte-foundations.skill
 
 Bundles official Svelte and SvelteKit documentation. No npm install, no build step.
 
-## Skills
+## Commands
 
-### svelte-docs
+### /svelte-foundations:svelte-docs
 
 Grep-first search across bundled Svelte documentation. Runes, template syntax, reactivity, lifecycle, components, stores, transitions, actions.
 
@@ -30,7 +30,7 @@ Grep-first search across bundled Svelte documentation. Runes, template syntax, r
 "What's the syntax for {#each} blocks?"
 ```
 
-### sveltekit-docs
+### /svelte-foundations:sveltekit-docs
 
 Same approach for SvelteKit. Routing, load functions, form actions, hooks, adapters, SSR, and the full API reference.
 
@@ -39,7 +39,7 @@ Same approach for SvelteKit. Routing, load functions, form actions, hooks, adapt
 "What options does the node adapter accept?"
 ```
 
-### browser
+### /svelte-foundations:browser
 
 Drive Chrome/Chromium without leaving your editor. Screenshots, DOM inspection, accessibility tree dumps, click/type/navigate automation, JS evaluation, and HAR export for network diagnostics.
 
@@ -52,7 +52,16 @@ Uses CDP directly. No Playwright or Puppeteer dependency.
 "Run document.querySelectorAll('a') in the browser"
 ```
 
-### sk-diagnose
+### /svelte-foundations:coding
+
+Dispatches the coding agent, which autonomously researches Svelte and SvelteKit docs, writes Svelte 5 code, and verifies the result in the browser. Loads shared references (migration guide, workflow checklist, Svelte 5 patterns) before writing anything.
+
+```
+"Build a form with SvelteKit form actions"
+"Migrate this component from Svelte 4 to 5"
+```
+
+### /svelte-foundations:diagnose
 
 Matches Svelte and SvelteKit errors against known patterns. Checks Vite dev server health first, then cross-references docs and project config. Dispatches a browser subagent for error screenshots so they don't bloat your context.
 
@@ -62,16 +71,7 @@ Matches Svelte and SvelteKit errors against known patterns. Checks Vite dev serv
 "Vite won't start"
 ```
 
-### sk-coding
-
-Makes Claude consult the docs before writing code and suggest verification after. Covers Svelte 5 migration patterns, SvelteKit conventions, and common pitfalls.
-
-```
-"Build a form with SvelteKit form actions"
-"Migrate this component from Svelte 4 to 5"
-```
-
-### sk-a11y-audit
+### /svelte-foundations:a11y-audit
 
 Captures the browser's accessibility tree via CDP and checks every element against a severity-rated checklist. Reports missing labels, broken focus order, contrast issues, and ARIA misuse.
 
@@ -88,18 +88,18 @@ Captures the browser's accessibility tree via CDP and checks every element again
 | `cdp-browser.js` | CDP client for all browser automation | Node 18+ |
 | `vite.sh` | Vite dev server health check and port detection | bash, curl |
 
-Shared references in `skills/_shared/references/` cover Svelte 5 patterns and a SvelteKit development checklist.
+Shared references in `skills/_shared/references/` cover Svelte 5 patterns, migration guide, workflow checklist, and a SvelteKit development checklist.
 
 ## Requirements
 
 - Claude Code
-- Chrome or Chromium (for browser, sk-diagnose, sk-a11y-audit)
+- Chrome or Chromium (for browser, diagnose, a11y-audit)
 - Node 18+ (for CDP client)
 - A Svelte or SvelteKit project
 
 ## Version
 
-Current version: **0.3.0**
+Current version: **0.4.0**
 
 ## License
 

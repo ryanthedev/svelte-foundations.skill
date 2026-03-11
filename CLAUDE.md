@@ -8,15 +8,24 @@ A Claude Code plugin (`svelte-foundations`) that provides documentation search a
 - **svelte-docs** — searches official Svelte documentation
 - **sveltekit-docs** — searches official SvelteKit documentation
 - **browser** — controls Chrome/Chromium via CDP for screenshots, DOM inspection, accessibility trees, click/type/navigate, and JS evaluation
-- **sk-diagnose** — diagnoses SvelteKit/Svelte errors using pattern matching and docs
-- **sk-coding** — provides coding guidance, migration patterns, and best practices
-- **sk-a11y-audit** — audits page accessibility via browser AX tree inspection
+- **diagnose** — diagnoses SvelteKit/Svelte errors using pattern matching and docs
+- **coding-agent** — autonomous agent that researches docs, writes Svelte 5 code, and verifies via browser
+- **a11y-audit** — audits page accessibility via browser AX tree inspection
 
 ## Repository Structure
 
 ```
 .claude-plugin/plugin.json   — Plugin metadata (name, version, description)
 .claude/settings.local.json  — Permission allowlist for the skills
+agents/
+  coding-agent.md            — SvelteKit coding agent (docs research + code + browser verify)
+commands/
+  svelte-docs.md             — Slash command for Svelte docs search
+  sveltekit-docs.md          — Slash command for SvelteKit docs search
+  browser.md                 — Slash command for browser automation
+  diagnose.md                — Slash command for error diagnosis
+  coding.md                  — Slash command that dispatches coding-agent
+  a11y-audit.md              — Slash command for accessibility audit
 skills/
   svelte-docs/SKILL.md       — Skill definition (trigger words, workflow, search strategy)
   svelte-docs/MANIFEST.md    — Index of all Svelte doc files by section and title
@@ -26,13 +35,11 @@ skills/
   browser/scripts/browser.sh — Chrome lifecycle management (ensure, status, url)
   browser/scripts/cdp-browser.js — CDP client (screenshot, dom, accessibility, click, type, navigate, evaluate)
   _shared/scripts/vite.sh        — Vite dev server health check and environment detection
-  _shared/references/            — Shared reference files (svelte5-patterns.md, sveltekit-checklist.md)
-  sk-diagnose/SKILL.md           — Error diagnosis skill
-  sk-diagnose/references/        — Error pattern database
-  sk-coding/SKILL.md             — Coding guidance skill
-  sk-coding/references/          — Workflow checklist, migration guide
-  sk-a11y-audit/SKILL.md         — Accessibility audit skill
-  sk-a11y-audit/references/      — A11y checklist
+  _shared/references/            — Shared reference files (svelte5-patterns.md, sveltekit-checklist.md, workflow-checklist.md, migration-guide.md)
+  diagnose/SKILL.md              — Error diagnosis skill
+  diagnose/references/           — Error pattern database
+  a11y-audit/SKILL.md            — Accessibility audit skill
+  a11y-audit/references/         — A11y checklist
 refs/
   svelte-docs/               — Local copy of Svelte docs (markdown, organized by numbered sections)
   sveltekit-docs/            — Local copy of SvelteKit docs (markdown, organized by numbered sections)
@@ -47,7 +54,9 @@ Each skill (defined in `SKILL.md`) follows the same pattern:
 
 Doc skills are restricted to `Read`, `Grep`, and `Glob` tools. The browser skill uses `Bash`, `Read`, and `Agent` (set in `.claude/settings.local.json`).
 
-New skills follow two additional patterns: sk-diagnose combines Bash (health check), Grep/Read (docs + config), and Agent (browser error capture) for error diagnosis. sk-coding uses Read/Grep/Glob to search docs and shared references before/during/after coding. sk-a11y-audit dispatches Agent subagents to capture accessibility trees and check against an a11y checklist.
+Additional skills: diagnose combines Bash (health check), Grep/Read (docs + config), and Agent (browser error capture) for error diagnosis. a11y-audit dispatches Agent subagents to capture accessibility trees and check against an a11y checklist.
+
+Slash commands are registered via `.md` files in the `commands/` directory. Each command file has YAML frontmatter (`description`, `argument-hint`, `allowed-tools`) and invokes the corresponding skill or agent. Agents are defined in `agents/` as `.md` files with `name` and `description` frontmatter. The `coding` command dispatches `coding-agent` which autonomously researches docs, writes code, and verifies via browser.
 
 ## Key Conventions
 

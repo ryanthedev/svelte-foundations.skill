@@ -1,5 +1,5 @@
 ---
-name: sk-diagnose
+name: diagnose
 description: Diagnose SvelteKit errors and issues. Use when troubleshooting errors,
   debugging build failures, or investigating unexpected behavior. Triggers on "diagnose",
   "error", "why is", "what's wrong", "debug", "fix this error", "stack trace",
@@ -7,9 +7,9 @@ description: Diagnose SvelteKit errors and issues. Use when troubleshooting erro
 allowed-tools: Bash, Read, Grep, Glob, Agent
 ---
 
-# Skill: sk-diagnose
+# Skill: diagnose
 
-**On load:** Read `../../.claude-plugin/plugin.json` from this skill's base directory. Display `sk-diagnose v{version}` before proceeding.
+**On load:** Read `../../.claude-plugin/plugin.json` from this skill's base directory. Display `diagnose v{version}` before proceeding.
 
 Diagnose SvelteKit and Svelte errors using pattern matching, documentation search, and optional browser error capture.
 
@@ -53,7 +53,7 @@ If not running, note it. Some errors are simply "server not running."
 Dispatch Agent:
   subagent_type: general-purpose
   model: haiku
-  description: "sk-diagnose: capture browser errors"
+  description: "diagnose: capture browser errors"
   prompt: |
     1. Run: ${CLAUDE_SKILL_DIR}/../browser/scripts/browser.sh ensure
     2. Run: ${CLAUDE_SKILL_DIR}/../browser/scripts/cdp-browser.js screenshot
@@ -82,7 +82,7 @@ Dispatch Agent:
 Dispatch Agent:
   subagent_type: general-purpose
   model: haiku
-  description: "sk-diagnose: search docs for error"
+  description: "diagnose: search docs for error"
   prompt: |
     Search for documentation related to this error.
 

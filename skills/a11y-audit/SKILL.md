@@ -1,5 +1,5 @@
 ---
-name: sk-a11y-audit
+name: a11y-audit
 description: Audit web page accessibility using browser accessibility tree and ARIA
   best practices. Use when checking accessibility, screen reader compatibility, or
   WCAG compliance. Triggers on "accessibility", "a11y", "audit", "accessible", "ARIA",
@@ -7,9 +7,9 @@ description: Audit web page accessibility using browser accessibility tree and A
 allowed-tools: Bash, Read, Grep, Agent
 ---
 
-# Skill: sk-a11y-audit
+# Skill: a11y-audit
 
-**On load:** Read `../../.claude-plugin/plugin.json` from this skill's base directory. Display `sk-a11y-audit v{version}` before proceeding.
+**On load:** Read `../../.claude-plugin/plugin.json` from this skill's base directory. Display `a11y-audit v{version}` before proceeding.
 
 Audit page accessibility by capturing the browser's accessibility tree and checking against a11y best practices checklist.
 
@@ -29,7 +29,7 @@ Dispatch a subagent to capture and analyze the accessibility tree.
 Dispatch Agent:
   subagent_type: general-purpose
   model: haiku
-  description: "sk-a11y-audit: capture and analyze AX tree"
+  description: "a11y-audit: capture and analyze AX tree"
   prompt: |
     1. Run: ${CLAUDE_SKILL_DIR}/../browser/scripts/browser.sh ensure
     2. Run: ${CLAUDE_SKILL_DIR}/../browser/scripts/cdp-browser.js accessibility
@@ -59,7 +59,7 @@ If Step 1 found issues, dispatch a subagent to inspect specific ARIA attributes 
 Dispatch Agent:
   subagent_type: general-purpose
   model: haiku
-  description: "sk-a11y-audit: inspect DOM ARIA attributes"
+  description: "a11y-audit: inspect DOM ARIA attributes"
   prompt: |
     1. Run: ${CLAUDE_SKILL_DIR}/../browser/scripts/browser.sh ensure
     2. Run: ${CLAUDE_SKILL_DIR}/../browser/scripts/cdp-browser.js dom
