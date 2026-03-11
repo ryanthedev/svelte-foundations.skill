@@ -1,30 +1,42 @@
 ---
 name: coding
-description: Load Svelte 5 coding context — patterns, checklists, and doc search. Use
-  when implementing features, writing components, migrating from Svelte 4, or reviewing
-  SvelteKit code. Triggers on "how do I", "implement", "build a", "create a component",
-  "SvelteKit pattern", "best practice", "Svelte 5 way", "runes", "before I code",
-  "code review", "coding".
-allowed-tools: Read, Grep, Glob
+description: SvelteKit coding guidance with docs-first workflow. Consults official
+  Svelte and SvelteKit docs before writing code. Use when writing components, implementing
+  features, building pages, migrating from Svelte 4, or reviewing SvelteKit code.
+  Triggers on "how do I", "implement", "build a", "create a component", "SvelteKit
+  pattern", "best practice", "Svelte 5 way", "runes", "before I code", "code review",
+  "coding".
+allowed-tools: Read, Grep, Glob, Skill
 ---
 
 # Skill: coding
 
 **On load:** Read `../../.claude-plugin/plugin.json` from this skill's base directory. Display `coding v{version}` before proceeding.
 
-Load Svelte 5 patterns, workflow checklist, and relevant documentation into context before writing or reviewing SvelteKit code.
+SvelteKit coding guidance that loads official docs into your context. Search docs first, then write code using Svelte 5 patterns.
 
 ---
 
-## Step 1 — Load References
+## Step 1: Load Lenses
 
-Read these files in order:
+Load both doc skills immediately:
 
 ```
-Read: ${CLAUDE_SKILL_DIR}/../_shared/references/svelte5-patterns.md
-Read: ${CLAUDE_SKILL_DIR}/../_shared/references/workflow-checklist.md
-Read: ${CLAUDE_SKILL_DIR}/../_shared/references/sveltekit-checklist.md
+Skill(svelte-foundations:svelte-docs)
+Skill(svelte-foundations:sveltekit-docs)
 ```
+
+---
+
+## Step 2: Search Docs First
+
+Before writing any code:
+
+1. Identify which Svelte/SvelteKit APIs and features the task involves
+2. Grep `${CLAUDE_SKILL_DIR}/../../refs/svelte-docs/` and `${CLAUDE_SKILL_DIR}/../../refs/sveltekit-docs/` for those APIs
+3. Read relevant doc files (max 5 most relevant)
+4. Read `${CLAUDE_SKILL_DIR}/../_shared/references/svelte5-patterns.md` for migration patterns
+5. Note SSR concerns, deprecation warnings, or required patterns
 
 For migration tasks, also read:
 ```
@@ -33,55 +45,34 @@ Read: ${CLAUDE_SKILL_DIR}/../_shared/references/migration-guide.md
 
 ---
 
-## Step 2 — Search Docs for Task APIs
+## Step 3: Write Code
 
-1. Read `${CLAUDE_SKILL_DIR}/../svelte-docs/MANIFEST.md` and `${CLAUDE_SKILL_DIR}/../sveltekit-docs/MANIFEST.md`
-2. Identify files relevant to the task by title/section
-3. Grep `${CLAUDE_SKILL_DIR}/../../refs/svelte-docs/` and `${CLAUDE_SKILL_DIR}/../../refs/sveltekit-docs/` for specific API names
-4. Read the most relevant matched files (up to 5)
+Use the docs you searched in Step 2 — correct APIs, props, and patterns.
 
----
-
-## Step 3 — Provide Context
-
-Summarize for the coding session:
-
-- **APIs needed** with current Svelte 5 signatures
-- **Patterns** from svelte5-patterns.md that apply
-- **Gotchas** from workflow-checklist.md Common Gotchas section
-- **SSR concerns** if browser APIs are involved
+Reference `${CLAUDE_SKILL_DIR}/../_shared/references/workflow-checklist.md` items as you go.
 
 ---
 
-## Svelte 5 Rules (non-negotiable)
+## Step 4: Verify
 
-| Use This | Not This |
-|----------|----------|
-| `let x = $state(0)` | `let x = 0` |
-| `let doubled = $derived(x * 2)` | `$: doubled = x * 2` |
-| `$effect(() => { ... })` | `$: { ... }` |
-| `let { prop } = $props()` | `export let prop` |
-| `onclick={handler}` | `on:click={handler}` |
-| `{@render children()}` | `<slot />` |
-| `{#snippet name()}...{/snippet}` | named slots |
+After implementation, suggest verification:
+
+- `/svelte-foundations:browser` to screenshot and verify rendering
+- `/svelte-foundations:a11y-audit` to check accessibility
+- If errors: `/svelte-foundations:diagnose` to diagnose
 
 ---
 
-## SvelteKit Conventions
+## Common Gotchas
 
-- File naming: `+page.svelte`, `+page.ts`, `+page.server.ts`, `+layout.svelte`, `+error.svelte`
-- Guard browser APIs with `onMount`, `$effect`, or `import { browser } from '$app/environment'`
-- Use `error()` and `fail()` helpers for error handling
-- Use `use:enhance` for progressive enhancement on forms
-- Load function data must be serializable (no class instances, functions, Dates)
-
----
-
-## Anti-Rationalization Table
-
-| Rationalization | Reality |
-|-----------------|---------|
-| "I know Svelte, skip the doc check" | APIs change between versions. A 2-minute check prevents a 20-minute debug session. |
-| "This is simple, no research needed" | Simple tasks have the most migration gotchas (events, slots, reactivity). |
-| "I'll check docs after" | Checking after means rewriting. Checking before means writing once. |
-| "The pattern looks right from memory" | Memory is Svelte 4. Reality is Svelte 5. Verify. |
+- `$state(array)` returns a proxy — use `$state.snapshot()` for serialization or comparison
+- `$effect` runs after DOM update — use `$effect.pre()` for before-update logic
+- Do not set `$state` inside `$effect` that reads it (infinite loop)
+- `let { prop } = $props()` must be top-level in the script block
+- Use `fail(400, { errors })` for validation errors, `throw error(500)` for unexpected errors
+- Code in `+page.svelte` runs on server AND client — guard browser APIs
+- Load function data must be serializable (no class instances, functions, Dates, Maps, Sets)
+- `on:click|preventDefault` is gone — wrap the handler instead
+- Use `{#snippet}` for template reuse within a file, `.svelte` component for cross-file reuse
+- `$store` auto-subscribe still works but prefer `$state` modules (`.svelte.js`) for new code
+- `flex` in CSS works differently than you'd expect with SSR — test with JS disabled

@@ -54,7 +54,7 @@ Uses CDP directly. No Playwright or Puppeteer dependency.
 
 ### /svelte-foundations:coding
 
-Loads the coding skill (Svelte 5 patterns, workflow checklist, doc search) into context, then dispatches the coding agent for autonomous implementation. The coding skill can also be loaded standalone alongside other tools like `code-foundations:code` for design-first workflows.
+Docs-first coding guidance. Loads svelte-docs and sveltekit-docs skills, searches for relevant APIs, then provides Svelte 5 patterns and common gotchas for your coding session.
 
 ```
 "Build a form with SvelteKit form actions"
