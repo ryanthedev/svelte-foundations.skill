@@ -24,7 +24,7 @@ Before writing any code, load your skill lenses using the Skill tool:
 1. Identify which Svelte/SvelteKit APIs and components the task involves
 2. Use the **docs** skills to search for those APIs (runes, template syntax, routing, load functions)
 3. Read relevant doc files (max 5 most relevant)
-4. Read `skills/_shared/references/svelte5-patterns.md` for Svelte 4→5 migration patterns
+4. Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/svelte5-patterns.md` for Svelte 4→5 migration patterns
 5. Note SSR concerns, deprecation warnings, or required patterns
 
 ### While Writing Code
@@ -33,7 +33,7 @@ Before writing any code, load your skill lenses using the Skill tool:
 2. Use Svelte 5 syntax exclusively (`$state`, `$derived`, `$effect`, `$props`, `onclick`, `{@render}`)
 3. Follow SvelteKit file conventions (`+page.svelte`, `+page.ts`, `+page.server.ts`)
 4. Guard browser APIs with `onMount`, `$effect`, or `import { browser } from '$app/environment'`
-5. Reference `skills/_shared/references/workflow-checklist.md` items as you go
+5. Reference `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/workflow-checklist.md` items as you go
 
 ### When Errors Occur
 
