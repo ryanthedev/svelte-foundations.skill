@@ -1,71 +1,53 @@
 ---
-description: "Use when writing components, implementing features, building pages, migrating from Svelte 4, or reviewing SvelteKit code."
+description: "Use when writing or reviewing Svelte 5 or SvelteKit code — components, runes and reactivity ($state/$derived/$effect), pages, data loading, forms and progressive enhancement, remote functions, or migrating from Svelte 4. Not for: React/Next, Vue/Nuxt, Svelte 3/4-only syntax, or non-Svelte backend, CSS, or build-tooling tasks."
 ---
 
 # Skill: coding
 
 **On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `coding v{version}` before proceeding.
 
-SvelteKit coding guidance that loads official docs into your context. Search docs first, then write code using Svelte 5 patterns.
+Write and review Svelte 5 + SvelteKit code, grounded in the bundled official docs. You
+already write solid modern Svelte unaided — this skill adds the two things you don't have:
+**features newer than your training data**, and a short list of items that **measurably get
+dropped** even in otherwise-good code.
 
 ---
 
-## Step 1: Load Lenses
+## 1. Before writing — check what you might be stale on
 
-Load both doc skills immediately:
+Skim `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modern-svelte.md`. If the task touches
+any of these, your built-in knowledge is likely stale — **grep the linked bundled doc for the
+specific API you need** (don't read the whole file; the remote-functions doc alone is ~1200
+lines), and don't guess:
 
-```
-Skill(svelte-foundations:svelte-docs)
-Skill(svelte-foundations:sveltekit-docs)
-```
+- **Remote functions** (`query`/`form`/`command`/`prerender` in `*.remote.ts`) — component-
+  level data and mutations; experimental.
+- **Attachments** (`{@attach}`) — the successor to `use:` actions in new code.
+- **Async Svelte** (`await` in components, `<svelte:boundary>`) — experimental.
+- **Newest runes** — `$state.raw`, `$state.eager`, `$inspect.trace`.
 
----
+For anything else, search the bundled docs when you need the precise API:
 
-## Step 2: Search Docs First
+1. `Grep` `${CLAUDE_PLUGIN_ROOT}/refs/svelte-docs/` and `${CLAUDE_PLUGIN_ROOT}/refs/sveltekit-docs/` for the API.
+2. Use the `MANIFEST.md` under each `skills/*-docs/` dir to locate files by title.
+3. Read the most relevant files (cite the filename). The bundled docs are the source of truth.
 
-Before writing any code:
+For Svelte 4 → 5 migration tasks, read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/migration.md`.
 
-1. Identify which Svelte/SvelteKit APIs and features the task involves
-2. Grep `${CLAUDE_PLUGIN_ROOT}/refs/svelte-docs/` and `${CLAUDE_PLUGIN_ROOT}/refs/sveltekit-docs/` for those APIs
-3. Read relevant doc files (max 5 most relevant)
-4. Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/svelte5-patterns.md` for migration patterns
-5. Note SSR concerns, deprecation warnings, or required patterns
+## 2. While writing
 
-For migration tasks, also read:
-```
-Read: ${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/migration-guide.md
-```
+Write idiomatic Svelte 5 (`$state`, `$derived`, `$props`, `onclick`, snippets, `{@render}`).
+Reach for `$effect` only to sync with external systems — compute values with `$derived`.
 
----
+## 3. Before declaring done — scan the slip list
 
-## Step 3: Write Code
+Check the work against `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/pre-ship-checklist.md`.
+The highest-frequency real slips: missing `use:enhance` on forms, unkeyed `{#each}`,
+destructuring reactive state, and module-level mutable state on the server (a cross-request
+data leak). Then run the verification gate (`npx svelte-check`, lint).
 
-Use the docs you searched in Step 2 — correct APIs, props, and patterns.
-
-Reference `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/workflow-checklist.md` items as you go.
-
----
-
-## Step 4: Verify
-
-After implementation, suggest verification:
+## 4. Verify
 
 - `/svelte-foundations:browser` to screenshot and verify rendering
-- `/svelte-foundations:a11y-audit` to check accessibility
-- If errors: `/svelte-foundations:diagnose` to diagnose
-
----
-
-## Common Gotchas
-
-- `$state(array)` returns a proxy — use `$state.snapshot()` for serialization or comparison
-- `$effect` runs after DOM update — use `$effect.pre()` for before-update logic
-- Do not set `$state` inside `$effect` that reads it (infinite loop)
-- `let { prop } = $props()` must be top-level in the script block
-- Use `fail(400, { errors })` for validation errors, `throw error(500)` for unexpected errors
-- Code in `+page.svelte` runs on server AND client — guard browser APIs
-- Load function data must be serializable (no class instances, functions, Dates, Maps, Sets)
-- `on:click|preventDefault` is gone — wrap the handler instead
-- Use `{#snippet}` for template reuse within a file, `.svelte` component for cross-file reuse
-- `$store` auto-subscribe still works but prefer `$state` modules (`.svelte.js`) for new code
-- `flex` in CSS works differently than you'd expect with SSR — test with JS disabled
+- `/svelte-foundations:a11y-audit` for accessibility (catches what the compiler can't)
+- `/svelte-foundations:diagnose` if errors appear

@@ -1,0 +1,125 @@
+# svelte
+
+## 01-introduction
+
+- [Overview](svelte/01-introduction/01-overview.md): Svelte is a framework for building user interfaces on the web. It uses a compiler to turn declarative components written
+- [Getting started](svelte/01-introduction/02-getting-started.md): We recommend using [SvelteKit](../kit), which lets you [build almost anything](../kit/project-types). It's the official 
+- [.svelte files](svelte/01-introduction/03-svelte-files.md): Components are the building blocks of Svelte applications. They are written into .svelte files, using a superset of HTML
+- [.svelte.js and .svelte.ts files](svelte/01-introduction/04-svelte-js-files.md): Besides .svelte files, Svelte also operates on .svelte.js and .svelte.ts files.
+- [Introduction](svelte/01-introduction/index.md)
+
+## 02-runes
+
+- [What are runes?](svelte/02-runes/01-what-are-runes.md): > [!NOTE] rune /ruːn/ noun
+- [$state](svelte/02-runes/02-$state.md): The $state rune allows you to create reactive state, which means that your UI reacts when it changes.
+- [$derived](svelte/02-runes/03-$derived.md): Derived state is declared with the $derived rune:
+- [$effect](svelte/02-runes/04-$effect.md): Effects are functions that run when state updates, and can be used for things like calling third-party libraries, drawin
+- [$props](svelte/02-runes/05-$props.md): The inputs to a component are referred to as props, which is short for properties. You pass props to components just lik
+- [$bindable](svelte/02-runes/06-$bindable.md): Ordinarily, props go one way, from parent to child. This makes it easy to understand how data flows around your app.
+- [$inspect](svelte/02-runes/07-$inspect.md): > [!NOTE] $inspect only works during development. In a production build it becomes a noop.
+- [$host](svelte/02-runes/08-$host.md): When compiling a component as a [custom element](custom-elements), the $host rune provides access to the host element, a
+- [Runes](svelte/02-runes/index.md)
+
+## 03-template-syntax
+
+- [Basic markup](svelte/03-template-syntax/01-basic-markup.md): Markup inside a Svelte component can be thought of as HTML++.
+- [{#if ...}](svelte/03-template-syntax/02-if.md): <!--- copy: false  --->
+- [{#each ...}](svelte/03-template-syntax/03-each.md): <!--- copy: false  --->
+- [{#key ...}](svelte/03-template-syntax/04-key.md): <!--- copy: false  --->
+- [{#await ...}](svelte/03-template-syntax/05-await.md): <!--- copy: false  --->
+- [{#snippet ...}](svelte/03-template-syntax/06-snippet.md): <!--- copy: false  --->
+- [{@render ...}](svelte/03-template-syntax/07-@render.md): To render a [snippet](snippet), use a {@render ...} tag.
+- [{@html ...}](svelte/03-template-syntax/08-@html.md): To inject raw HTML into your component, use the {@html ...} tag:
+- [{@attach ...}](svelte/03-template-syntax/09-@attach.md): Attachments are functions that run in an [effect]($effect) when an element is mounted to the DOM or when [state]($state)
+- [{@const ...}](svelte/03-template-syntax/10-@const.md): The {@const ...} tag defines a local constant.
+- [{@debug ...}](svelte/03-template-syntax/11-@debug.md): The {@debug ...} tag offers an alternative to console.log(...). It logs the values of specific variables whenever they c
+- [12-bind](svelte/03-template-syntax/12-bind.md): ---
+- [use:](svelte/03-template-syntax/13-use.md): > [!NOTE]
+- [transition:](svelte/03-template-syntax/14-transition.md): A transition is triggered by an element entering or leaving the DOM as a result of a state change.
+- [in: and out:](svelte/03-template-syntax/15-in-and-out.md): The in: and out: directives are identical to [transition:](transition), except that the resulting transitions are not bi
+- [animate:](svelte/03-template-syntax/16-animate.md): An animation is triggered when the contents of a [keyed each block](each#Keyed-each-blocks) are re-ordered. Animations d
+- [style:](svelte/03-template-syntax/17-style.md): The style: directive provides a shorthand for setting multiple styles on an element.
+- [class](svelte/03-template-syntax/18-class.md): There are two ways to set classes on elements: the class attribute, and the class: directive.
+- [await](svelte/03-template-syntax/19-await-expressions.md): As of Svelte 5.36, you can use the await keyword inside your components in three places where it was previously unavaila
+- [Template syntax](svelte/03-template-syntax/index.md)
+
+## 04-styling
+
+- [Scoped styles](svelte/04-styling/01-scoped-styles.md): Svelte components can include a <style> element containing CSS that belongs to the component. This CSS is scoped by defa
+- [Global styles](svelte/04-styling/02-global-styles.md): To apply styles to a single selector globally, use the :global(...) modifier:
+- [Custom properties](svelte/04-styling/03-custom-properties.md): You can pass CSS custom properties — both static and dynamic — to components:
+- [Nested <style> elements](svelte/04-styling/04-nested-style-elements.md): There can only be one top-level <style> tag per component.
+- [Styling](svelte/04-styling/index.md)
+
+## 05-special-elements
+
+- [<svelte:boundary>](svelte/05-special-elements/01-svelte-boundary.md): <svelte:boundary onerror={handler}>...</svelte:boundary>
+- [<svelte:window>](svelte/05-special-elements/02-svelte-window.md): <svelte:window onevent={handler} />
+- [<svelte:document>](svelte/05-special-elements/03-svelte-document.md): <svelte:document onevent={handler} />
+- [<svelte:body>](svelte/05-special-elements/04-svelte-body.md): <svelte:body onevent={handler} />
+- [<svelte:head>](svelte/05-special-elements/05-svelte-head.md): <svelte:head>...</svelte:head>
+- [<svelte:element>](svelte/05-special-elements/06-svelte-element.md): <svelte:element this={expression} />
+- [<svelte:options>](svelte/05-special-elements/07-svelte-options.md): <svelte:options option={value} />
+- [Special elements](svelte/05-special-elements/index.md)
+
+## 06-runtime
+
+- [Stores](svelte/06-runtime/01-stores.md): <!-- - how to use
+- [Context](svelte/06-runtime/02-context.md): Context allows components to access values owned by parent components without passing them down as props (potentially th
+- [Lifecycle hooks](svelte/06-runtime/03-lifecycle-hooks.md): <!-- - onMount/onDestroy
+- [Imperative component API](svelte/06-runtime/04-imperative-component-api.md): <!-- better title needed?
+- [Hydratable data](svelte/06-runtime/05-hydratable.md): In Svelte, when you want to render asynchronous content data on the server, you can simply await it. This is great! Howe
+- [Runtime](svelte/06-runtime/index.md)
+
+## 07-misc
+
+- [Best practices](svelte/07-misc/01-best-practices.md): <!-- llm-ignore-start -->
+- [Testing](svelte/07-misc/02-testing.md): Testing helps you write and maintain your code and guard against regressions. Testing frameworks help you with that, all
+- [TypeScript](svelte/07-misc/03-typescript.md): <!-- - [basically what we have today](https://svelte.dev/docs/typescript)
+- [Custom elements](svelte/07-misc/04-custom-elements.md): <!-- - [basically what we have today](https://svelte.dev/docs/custom-elements-api) -->
+- [Svelte 4 migration guide](svelte/07-misc/06-v4-migration-guide.md): This migration guide provides an overview of how to migrate from Svelte version 3 to 4. See the linked PRs for more deta
+- [Svelte 5 migration guide](svelte/07-misc/07-v5-migration-guide.md): Version 5 comes with an overhauled syntax and reactivity system. While it may look different at first, you'll soon notic
+- [Frequently asked questions](svelte/07-misc/99-faq.md): We think the best way to get started is playing through the interactive [tutorial](/tutorial). Each step there is mainly
+- [Misc](svelte/07-misc/index.md)
+
+## 98-reference
+
+- [svelte](svelte/98-reference/20-svelte.md): > MODULE: svelte
+- [svelte/action](svelte/98-reference/21-svelte-action.md): This module provides types for [actions](use), which have been superseded by [attachments](@attach).
+- [svelte/animate](svelte/98-reference/21-svelte-animate.md): > MODULE: svelte/animate
+- [svelte/attachments](svelte/98-reference/21-svelte-attachments.md): > MODULE: svelte/attachments
+- [svelte/compiler](svelte/98-reference/21-svelte-compiler.md): > MODULE: svelte/compiler
+- [svelte/easing](svelte/98-reference/21-svelte-easing.md): > MODULE: svelte/easing
+- [svelte/events](svelte/98-reference/21-svelte-events.md): > MODULE: svelte/events
+- [svelte/legacy](svelte/98-reference/21-svelte-legacy.md): This module provides various functions for use during the migration, since some features can't be replaced one to one wi
+- [svelte/motion](svelte/98-reference/21-svelte-motion.md): > MODULE: svelte/motion
+- [svelte/reactivity/window](svelte/98-reference/21-svelte-reactivity-window.md): This module exports reactive versions of various window values, each of which has a reactive current property that you c
+- [svelte/reactivity](svelte/98-reference/21-svelte-reactivity.md): Svelte provides reactive versions of various built-ins like [Map](https://developer.mozilla.org/en-US/docs/Web/JavaScrip
+- [svelte/server](svelte/98-reference/21-svelte-server.md): > MODULE: svelte/server
+- [svelte/store](svelte/98-reference/21-svelte-store.md): > MODULE: svelte/store
+- [svelte/transition](svelte/98-reference/21-svelte-transition.md): > MODULE: svelte/transition
+- ['Compiler errors'](svelte/98-reference/30-compiler-errors.md): @include .generated/compile-errors.md
+- ['Compiler warnings'](svelte/98-reference/30-compiler-warnings.md): Svelte warns you at compile time if it catches potential mistakes, such as writing inaccessible markup.
+- ['Runtime errors'](svelte/98-reference/30-runtime-errors.md): @include .generated/client-errors.md
+- ['Runtime warnings'](svelte/98-reference/30-runtime-warnings.md): @include .generated/client-warnings.md
+- [Reference](svelte/98-reference/index.md)
+
+## 99-legacy
+
+- [Overview](svelte/99-legacy/00-legacy-overview.md): Svelte 5 introduced some significant changes to Svelte's API, including [runes](what-are-runes), [snippets](snippet) and
+- [Reactive let/var declarations](svelte/99-legacy/01-legacy-let.md): In runes mode, reactive state is explicitly declared with the [$state rune]($state).
+- [Reactive $: statements](svelte/99-legacy/02-legacy-reactive-assignments.md): In runes mode, reactions to state updates are handled with the [$derived]($derived) and [$effect]($effect) runes.
+- [export let](svelte/99-legacy/03-legacy-export-let.md): In runes mode, [component props](basic-markup#Component-props) are declared with the [$props]($props) rune, allowing par
+- [$$props and $$restProps](svelte/99-legacy/04-legacy-$$props-and-$$restProps.md): In runes mode, getting an object containing all the props that were passed in is easy, using the [$props]($props) rune.
+- [on:](svelte/99-legacy/10-legacy-on.md): In runes mode, event handlers are just like any other attribute or prop.
+- [<slot>](svelte/99-legacy/20-legacy-slots.md): In Svelte 5, content can be passed to components in the form of [snippets](snippet) and rendered using [render tags](@re
+- [$$slots](svelte/99-legacy/21-legacy-$$slots.md): In runes mode, we know which [snippets](snippet) were provided to a component, as they're just normal props.
+- [<svelte:fragment>](svelte/99-legacy/22-legacy-svelte-fragment.md): The <svelte:fragment> element allows you to place content in a [named slot](legacy-slots) without wrapping it in a conta
+- [<svelte:component>](svelte/99-legacy/30-legacy-svelte-component.md): In runes mode, <MyComponent> will re-render if the value of MyComponent changes. See the [Svelte 5 migration guide](/doc
+- [<svelte:self>](svelte/99-legacy/31-legacy-svelte-self.md): The <svelte:self> element allows a component to include itself, recursively.
+- [Imperative component API](svelte/99-legacy/40-legacy-component-api.md): In Svelte 3 and 4, the API for interacting with a component is different than in Svelte 5. Note that this page does not 
+- [Legacy APIs](svelte/99-legacy/index.md)
+
+## docs
+
+- [Svelte](svelte/index.md)

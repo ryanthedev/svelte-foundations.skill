@@ -1,0 +1,6 @@
+*.db
+*.db-wal
+*.db-shm
+recall.md
+local/
+.grugignore

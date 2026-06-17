@@ -1,0 +1,100 @@
+# sveltekit
+
+## 10-getting-started
+
+- [Introduction](sveltekit/10-getting-started/10-introduction.md): > [!NOTE] If you're new to Svelte or SvelteKit we recommend checking out the [interactive tutorial](/tutorial/kit).
+- [Creating a project](sveltekit/10-getting-started/20-creating-a-project.md): The easiest way to start building a SvelteKit app is to run npx sv create:
+- [Project types](sveltekit/10-getting-started/25-project-types.md): SvelteKit offers configurable rendering, which allows you to build and deploy your project in several different ways. Yo
+- [Project structure](sveltekit/10-getting-started/30-project-structure.md): A typical SvelteKit project looks like this:
+- [Web standards](sveltekit/10-getting-started/40-web-standards.md): Throughout this documentation, you'll see references to the standard [Web APIs](https://developer.mozilla.org/en-US/docs
+- [Getting started](sveltekit/10-getting-started/index.md)
+
+## 20-core-concepts
+
+- [Routing](sveltekit/20-core-concepts/10-routing.md): At the heart of SvelteKit is a filesystem-based router. The routes of your app — i.e. the URL paths that users can acces
+- [Loading data](sveltekit/20-core-concepts/20-load.md): Before a [+page.svelte](routing#page-page.svelte) component (and its containing [+layout.svelte](routing#layout-layout.s
+- [Form actions](sveltekit/20-core-concepts/30-form-actions.md): A +page.server.js file can export actions, which allow you to POST data to the server using the <form> element.
+- [Page options](sveltekit/20-core-concepts/40-page-options.md): By default, SvelteKit will render (or [prerender](glossary#Prerendering)) any component first on the server and send it 
+- [State management](sveltekit/20-core-concepts/50-state-management.md): If you're used to building client-only apps, state management in an app that spans server and client might seem intimida
+- [Remote functions](sveltekit/20-core-concepts/60-remote-functions.md): <blockquote class="since note">
+- [Core concepts](sveltekit/20-core-concepts/index.md)
+
+## 25-build-and-deploy
+
+- [Building your app](sveltekit/25-build-and-deploy/10-building-your-app.md): Building a SvelteKit app happens in two stages, which both happen when you run vite build (usually via npm run build).
+- [Adapters](sveltekit/25-build-and-deploy/20-adapters.md): Before you can deploy your SvelteKit app, you need to adapt it for your deployment target. Adapters are small plugins th
+- [Zero-config deployments](sveltekit/25-build-and-deploy/30-adapter-auto.md): When you create a new SvelteKit project with npx sv create, it installs [adapter-auto](https://github.com/sveltejs/kit/t
+- [Node servers](sveltekit/25-build-and-deploy/40-adapter-node.md): To generate a standalone Node server, use [adapter-node](https://github.com/sveltejs/kit/tree/main/packages/adapter-node
+- [Static site generation](sveltekit/25-build-and-deploy/50-adapter-static.md): To use SvelteKit as a static site generator (SSG), use [adapter-static](https://github.com/sveltejs/kit/tree/main/packag
+- [Single-page apps](sveltekit/25-build-and-deploy/55-single-page-apps.md): You can turn a SvelteKit app into a fully client-rendered single-page app (SPA) by specifying a fallback page. This page
+- [Cloudflare](sveltekit/25-build-and-deploy/60-adapter-cloudflare.md): To deploy to [Cloudflare Workers](https://workers.cloudflare.com/) or [Cloudflare Pages](https://pages.cloudflare.com/),
+- [Cloudflare Workers](sveltekit/25-build-and-deploy/70-adapter-cloudflare-workers.md): > [!NOTE] adapter-cloudflare-workers has been deprecated in favour of [adapter-cloudflare](adapter-cloudflare). We recom
+- [Netlify](sveltekit/25-build-and-deploy/80-adapter-netlify.md): To deploy to Netlify, use [adapter-netlify](https://github.com/sveltejs/kit/tree/main/packages/adapter-netlify).
+- [Vercel](sveltekit/25-build-and-deploy/90-adapter-vercel.md): To deploy to Vercel, use [adapter-vercel](https://github.com/sveltejs/kit/tree/main/packages/adapter-vercel).
+- [Writing adapters](sveltekit/25-build-and-deploy/99-writing-adapters.md): If an adapter for your preferred environment doesn't yet exist, you can build your own. We recommend [looking at the sou
+- [Build and deploy](sveltekit/25-build-and-deploy/index.md)
+
+## 30-advanced
+
+- [Advanced routing](sveltekit/30-advanced/10-advanced-routing.md): If the number of route segments is unknown, you can use rest syntax — for example you might implement GitHub's file view
+- [Hooks](sveltekit/30-advanced/20-hooks.md): 'Hooks' are app-wide functions you declare that SvelteKit will call in response to specific events, giving you fine-grai
+- [Errors](sveltekit/30-advanced/25-errors.md): Errors are an inevitable fact of software development. SvelteKit handles errors differently depending on where they occu
+- [Link options](sveltekit/30-advanced/30-link-options.md): In SvelteKit, <a> elements (rather than framework-specific <Link> components) are used to navigate between the routes of
+- [Service workers](sveltekit/30-advanced/40-service-workers.md): Service workers act as proxy servers that handle network requests inside your app. This makes it possible to make your a
+- [Server-only modules](sveltekit/30-advanced/50-server-only-modules.md): Like a good friend, SvelteKit keeps your secrets. When writing your backend and frontend in the same repository, it can 
+- [Snapshots](sveltekit/30-advanced/65-snapshots.md): Ephemeral DOM state — like scroll positions on sidebars, the content of <input> elements and so on — is discarded when y
+- [Shallow routing](sveltekit/30-advanced/67-shallow-routing.md): As you navigate around a SvelteKit app, you create history entries. Clicking the back and forward buttons traverses thro
+- [Observability](sveltekit/30-advanced/68-observability.md): <blockquote class="since note">
+- [Packaging](sveltekit/30-advanced/70-packaging.md): You can use SvelteKit to build apps as well as component libraries, using the @sveltejs/package package (npx sv create h
+- [Advanced](sveltekit/30-advanced/index.md)
+
+## 40-best-practices
+
+- [Auth](sveltekit/40-best-practices/03-auth.md): Auth refers to authentication and authorization, which are common needs when building a web application. Authentication 
+- [Performance](sveltekit/40-best-practices/05-performance.md): Out of the box, SvelteKit does a lot of work to make your applications as performant as possible:
+- [Icons](sveltekit/40-best-practices/06-icons.md): A great way to use icons is to define them purely via CSS. Iconify offers support for [many popular icon sets](https://i
+- [Images](sveltekit/40-best-practices/07-images.md): Images can have a big impact on your app's performance. For best results, you should optimize them by doing the followin
+- [Accessibility](sveltekit/40-best-practices/10-accessibility.md): SvelteKit strives to provide an accessible platform for your app by default. Svelte's [compile-time accessibility checks
+- [SEO](sveltekit/40-best-practices/20-seo.md): The most important aspect of SEO is to create high-quality content that is widely linked to from around the web. However
+- [Best practices](sveltekit/40-best-practices/index.md)
+
+## 60-appendix
+
+- [Frequently asked questions](sveltekit/60-appendix/10-faq.md): Please see [the Svelte FAQ](../svelte/faq) and [vite-plugin-svelte FAQ](https://github.com/sveltejs/vite-plugin-svelte/b
+- [Integrations](sveltekit/60-appendix/20-integrations.md): [vitePreprocess](https://github.com/sveltejs/vite-plugin-svelte/blob/main/docs/preprocess.md) preprocesses <style> and <
+- [Breakpoint Debugging](sveltekit/60-appendix/25-debugging.md): In addition to the [@debug](../svelte/@debug) tag, you can also debug Svelte and SvelteKit projects using breakpoints wi
+- [Migrating to SvelteKit v2](sveltekit/60-appendix/30-migrating-to-sveltekit-2.md): Upgrading from SvelteKit version 1 to version 2 should be mostly seamless. There are a few breaking changes to note, whi
+- [Migrating from Sapper](sveltekit/60-appendix/40-migrating.md): SvelteKit is the successor to Sapper and shares many elements of its design.
+- [Additional resources](sveltekit/60-appendix/50-additional-resources.md): Please see the [SvelteKit FAQ](faq) for solutions to common issues and helpful tips and tricks.
+- [Glossary](sveltekit/60-appendix/60-glossary.md): The core of SvelteKit provides a highly configurable rendering engine. This section describes some of the terms used whe
+- [Appendix](sveltekit/60-appendix/index.md)
+
+## 98-reference
+
+- [@sveltejs/kit](sveltekit/98-reference/10-@sveltejs-kit.md): > MODULE: @sveltejs/kit
+- [@sveltejs/kit/hooks](sveltekit/98-reference/15-@sveltejs-kit-hooks.md): > MODULE: @sveltejs/kit/hooks
+- [@sveltejs/kit/node/polyfills](sveltekit/98-reference/15-@sveltejs-kit-node-polyfills.md): > MODULE: @sveltejs/kit/node/polyfills
+- [@sveltejs/kit/node](sveltekit/98-reference/15-@sveltejs-kit-node.md): > MODULE: @sveltejs/kit/node
+- [@sveltejs/kit/vite](sveltekit/98-reference/15-@sveltejs-kit-vite.md): > MODULE: @sveltejs/kit/vite
+- [$app/environment](sveltekit/98-reference/20-$app-environment.md): > MODULE: $app/environment
+- [$app/forms](sveltekit/98-reference/20-$app-forms.md): > MODULE: $app/forms
+- [$app/navigation](sveltekit/98-reference/20-$app-navigation.md): > MODULE: $app/navigation
+- [$app/paths](sveltekit/98-reference/20-$app-paths.md): > MODULE: $app/paths
+- [$app/server](sveltekit/98-reference/20-$app-server.md): > MODULE: $app/server
+- [$app/state](sveltekit/98-reference/20-$app-state.md): SvelteKit makes three read-only state objects available via the $app/state module — page, navigating and updated.
+- [$app/stores](sveltekit/98-reference/20-$app-stores.md): This module contains store-based equivalents of the exports from [$app/state]($app-state). If you're using SvelteKit 2.1
+- [$app/types](sveltekit/98-reference/20-$app-types.md): This module contains generated types for the routes in your app.
+- [$env/dynamic/private](sveltekit/98-reference/25-$env-dynamic-private.md): > MODULE: $env/dynamic/private
+- [$env/dynamic/public](sveltekit/98-reference/25-$env-dynamic-public.md): > MODULE: $env/dynamic/public
+- [$env/static/private](sveltekit/98-reference/25-$env-static-private.md): > MODULE: $env/static/private
+- [$env/static/public](sveltekit/98-reference/25-$env-static-public.md): > MODULE: $env/static/public
+- [$lib](sveltekit/98-reference/26-$lib.md): SvelteKit automatically makes files under src/lib available using the $lib import alias.
+- [$service-worker](sveltekit/98-reference/27-$service-worker.md): > MODULE: $service-worker
+- [Configuration](sveltekit/98-reference/50-configuration.md): Your project's configuration lives in a svelte.config.js file at the root of your project. As well as SvelteKit, this co
+- [Command Line Interface](sveltekit/98-reference/52-cli.md): SvelteKit projects use [Vite](https://vitejs.dev), meaning you'll mostly use its CLI (albeit via npm run dev/build/previ
+- [Types](sveltekit/98-reference/54-types.md): The RequestHandler and Load types both accept a Params argument allowing you to type the params object. For example this
+- [Reference](sveltekit/98-reference/index.md)
+
+## docs
+
+- [SvelteKit](sveltekit/index.md)

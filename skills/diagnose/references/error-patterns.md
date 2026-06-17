@@ -310,3 +310,34 @@ const app = mount(App, {
 ```
 
 **Doc:** refs/svelte-docs/07-misc/07-v5-migration-guide.md
+
+---
+
+## Modern Features (Experimental)
+
+### 23. Remote functions not enabled
+
+**Match:** ".remote", "remoteFunctions", "$app/server", "query is not", "experimental remote"
+
+**Cause:** Remote functions (`query`/`form`/`command`/`prerender` from `$app/server`) require an experimental opt-in. Without it, imports fail or the build errors.
+
+**Fix:** Enable in `svelte.config.js`. Add `compilerOptions.experimental.async` too if using `await` in components:
+```js
+const config = {
+  kit: { experimental: { remoteFunctions: true } },
+  compilerOptions: { experimental: { async: true } }
+};
+```
+Remote files (`*.remote.ts`) can live anywhere in `src` except `src/lib/server`.
+
+**Doc:** refs/sveltekit-docs/20-core-concepts/60-remote-functions.md
+
+### 24. await used without async opt-in
+
+**Match:** "experimental.async", "await_waterfall", "svelte:boundary", "Cannot use await", "await is not allowed"
+
+**Cause:** Top-level/markup/`$derived` `await` requires `compilerOptions.experimental.async: true`. An `await_waterfall` warning means sequential dependent awaits that should run in parallel.
+
+**Fix:** Enable `compilerOptions.experimental.async: true` in `svelte.config.js`. Wrap async UI in `<svelte:boundary>` with a `pending` snippet. Parallelize independent awaits instead of chaining them.
+
+**Doc:** refs/svelte-docs/03-template-syntax/19-await-expressions.md

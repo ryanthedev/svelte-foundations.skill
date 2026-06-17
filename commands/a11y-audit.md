@@ -98,15 +98,6 @@ Each finding includes: element selector, issue, fix suggestion, relevant checkli
 
 ---
 
-## Anti-Rationalization Table
-
-| Rationalization | Reality |
-|-----------------|---------|
-| "The page looks fine visually" | Visual appearance tells nothing about screen reader experience. |
-| "It's just an internal tool" | Internal tools have users with disabilities too. Legal requirements apply. |
-| "I'll add a11y later" | Retrofitting a11y is 5-10x more expensive than building it in. |
-| "The framework handles a11y" | Svelte adds compile-time warnings but cannot enforce runtime a11y. |
-
 ## Context Efficiency
 
 | Item | Size | In Main Context? |

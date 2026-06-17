@@ -116,14 +116,6 @@ Format the diagnosis as:
 
 ---
 
-## Anti-Rationalization Table
-
-| Rationalization | Reality |
-|-----------------|---------|
-| "I know this error, skip pattern DB" | Pattern DB catches edge cases you'd miss. Read it. |
-| "Config check is overkill" | Misconfiguration is the root cause for ~40% of SvelteKit errors. |
-| "I'll skip the doc reference" | Doc reference lets the user learn, not just fix. Always include it. |
-
 ## Context Efficiency
 
 | Item | Size | In Main Context? |

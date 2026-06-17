@@ -10,7 +10,6 @@ A Claude Code plugin (`svelte-foundations`) that provides documentation search a
 - **browser** — controls Chrome/Chromium via CDP for screenshots, DOM inspection, accessibility trees, click/type/navigate, and JS evaluation
 - **diagnose** — diagnoses SvelteKit/Svelte errors using pattern matching and docs
 - **coding** — docs-first coding guidance, loads svelte-docs + sveltekit-docs
-- **coding-agent** — autonomous agent that loads docs, diagnose, and browser for hands-off implementation
 - **a11y-audit** — audits page accessibility via browser AX tree inspection
 
 ## Repository Structure
@@ -18,8 +17,6 @@ A Claude Code plugin (`svelte-foundations`) that provides documentation search a
 ```
 .claude-plugin/plugin.json   — Plugin metadata (name, version, description)
 .claude/settings.local.json  — Permission allowlist
-agents/
-  coding-agent.md            — Autonomous coding agent (loads docs, diagnose, browser)
 commands/                    — Slash commands (auto-discovered, user-invocable)
   svelte-docs.md             — Svelte docs search
   sveltekit-docs.md          — SvelteKit docs search
@@ -33,7 +30,7 @@ skills/                      — Supporting files only (NO SKILL.md)
   browser/scripts/browser.sh — Chrome lifecycle management (ensure, status, url)
   browser/scripts/cdp-browser.js — CDP client (screenshot, dom, accessibility, click, type, navigate, evaluate)
   _shared/scripts/vite.sh        — Vite dev server health check and environment detection
-  _shared/references/            — Shared reference files (svelte5-patterns.md, sveltekit-checklist.md, workflow-checklist.md, migration-guide.md)
+  _shared/references/            — Shared reference files (modern-svelte.md, pre-ship-checklist.md, migration.md)
   diagnose/references/           — Error pattern database
   a11y-audit/references/         — A11y checklist
 refs/
@@ -50,7 +47,7 @@ Each doc command follows the same pattern:
 2. Grep the docs directory for specific terms if needed
 3. Read matched files and cite the filename
 
-Doc commands are restricted to `Read`, `Grep`, and `Glob` tools. The browser command uses `Bash`, `Read`, and `Agent`. Agents are defined in `agents/` as `.md` files with `name` and `description` frontmatter.
+Doc commands are restricted to `Read`, `Grep`, and `Glob` tools. The browser command uses `Bash`, `Read`, and `Agent`.
 
 Commands reference supporting files via `${CLAUDE_PLUGIN_ROOT}/skills/<name>/...`.
 

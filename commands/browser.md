@@ -195,16 +195,6 @@ Dispatch Agent:
 
 ---
 
-## Anti-Rationalization Table
-
-| Rationalization | Reality |
-|-----------------|---------|
-| "The DOM is small, I'll just read it inline" | Size is unpredictable. Always dispatch a subagent. |
-| "I'll take a quick screenshot to check" | Screenshots always go to a subagent. No exceptions. |
-| "I'll use evaluate to grab the HTML instead" | Evaluate returning large HTML is the same as DOM inspection — use subagent. |
-| "The user only wants one element, I can read it directly" | Use cdp-browser.js dom --selector in a subagent. One element can still be large. |
-| "The page is simple, the accessibility tree will be tiny" | AX trees are always larger than expected. Subagent. |
-
 ## Tips
 
 - Run `browser.sh ensure` before any `cdp-browser.js` command — Chrome must be running with CDP enabled.

@@ -1,2 +1,5 @@
 docs/building/
 docs/plans/
+
+# skill-eval workspace (not shipped)
+.eval/
