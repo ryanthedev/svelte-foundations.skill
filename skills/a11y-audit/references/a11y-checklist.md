@@ -1,5 +1,12 @@
 # Accessibility Audit Checklist
 
+## Contents
+
+- Required Attributes by Element Type (button, link, input, image, form, navigation, heading)
+- Minimum Touch Target Sizes
+- Valid ARIA Role Values (landmark, widget, document-structure)
+- Common Anti-Patterns (+ Svelte-specific: ARIA forwarding, focus management, label binding)
+
 ## Required Attributes by Element Type
 
 ### Button
@@ -41,8 +48,9 @@
 
 | Context | Minimum Size | Source |
 |---------|-------------|--------|
-| Mobile | 48x48 CSS pixels | WCAG 2.5.8 (AA) |
-| Desktop | 44x44 CSS pixels | WCAG 2.5.5 (AAA) / recommended |
+| WCAG minimum (AA) | 24x24 CSS pixels | WCAG 2.5.8 Target Size (Minimum), Level AA |
+| Enhanced / recommended (AAA) | 44x44 CSS pixels | WCAG 2.5.5 Target Size (Enhanced), Level AAA / Apple HIG |
+| Comfortable touch (non-normative) | 48x48 CSS pixels | Google Material guidance — not a WCAG level |
 | Inline text links | Exempt | WCAG exception for inline links |
 
 ## Valid ARIA Role Values
@@ -105,23 +113,24 @@
 <button {...rest}>{@render children()}</button>
 ```
 
-### Svelte-specific: Focus management with use: action
+### Svelte-specific: Focus management with {@attach}
 
-Action for focus trapping in modals:
+Prefer an attachment for focus trapping in modals — the successor to `use:` actions in new code:
 ```svelte
-<div use:trapFocus>
+<div {@attach trapFocus}>
   <!-- dialog content -->
 </div>
 ```
 
 ### Svelte-specific: Form label binding
 
-Use `bind:this` and `for`/`id` for dynamic label association:
+Use `$props.id()` for a stable, SSR-safe unique id (Svelte 5.20+). Never `Math.random()` —
+it renders a different value on server and client, causing a hydration mismatch (see
+pre-ship-checklist "guard browser globals").
 ```svelte
 <script>
-  let input = $state();
-  let id = $props().id ?? 'field-' + Math.random().toString(36).slice(2);
+  const uid = $props.id();
 </script>
-<label for={id}>{label}</label>
-<input {id} bind:this={input} />
+<label for={uid}>{label}</label>
+<input id={uid} />
 ```

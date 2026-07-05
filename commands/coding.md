@@ -4,8 +4,6 @@ description: "Use when writing or reviewing Svelte 5 or SvelteKit code — compo
 
 # Skill: coding
 
-**On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `coding v{version}` before proceeding.
-
 Write and review Svelte 5 + SvelteKit code, grounded in the bundled official docs. You
 already write solid modern Svelte unaided — this skill adds the two things you don't have:
 **features newer than your training data**, and a short list of items that **measurably get

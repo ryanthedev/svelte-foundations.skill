@@ -4,8 +4,6 @@ description: "Use when answering questions about SvelteKit routing, load functio
 
 # Skill: sveltekit-docs
 
-**On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `sveltekit-docs v{version}` before proceeding.
-
 Search the official SvelteKit documentation to answer questions accurately.
 
 ---

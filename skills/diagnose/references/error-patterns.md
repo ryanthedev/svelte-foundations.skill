@@ -1,6 +1,16 @@
 # SvelteKit Error Patterns
 
-Pattern database for sk-diagnose. Each pattern has substring matches, root cause, and fix.
+Pattern database for the diagnose skill. Each pattern has substring matches, root cause, and fix.
+
+## Contents
+
+- Compiler Errors (1–4): `$types` import, `createEventDispatcher`, mixed 4/5 syntax, prerender
+- SSR/Hydration (5–7): state leak, hydration mismatch, store subscription leak
+- Vite/Build (8–12): HMR, circular deps, missing preprocessor, optimize-dep, tsconfig
+- Routing/Adapter (13–17): base-path redirect, missing +error/+layout, adapter config, stale types
+- Environment/Security (18–19): env var exposure, CORS/proxy
+- Runtime (20–22): effect/derived loop, hook order, component-not-a-constructor
+- Modern Features / experimental (23–24): remote functions opt-in, async `await` opt-in
 
 ---
 
@@ -14,7 +24,7 @@ Pattern database for sk-diagnose. Each pattern has substring matches, root cause
 
 **Fix:** Ensure the file is in the `src/routes/` directory and uses `+page.ts`, `+page.server.ts`, `+layout.ts`, or `+layout.server.ts` naming. Run `npx svelte-kit sync` to regenerate types.
 
-**Doc:** refs/sveltekit-docs/98-reference/30-types.md
+**Doc:** refs/sveltekit-docs/98-reference/54-types.md
 
 ### 2. createEventDispatcher in Svelte 5
 
@@ -144,7 +154,7 @@ rm -rf node_modules/.vite && npm run dev
 { "extends": "./.svelte-kit/tsconfig.json" }
 ```
 
-**Doc:** refs/sveltekit-docs/98-reference/40-configuration.md
+**Doc:** refs/sveltekit-docs/98-reference/54-types.md
 
 ---
 

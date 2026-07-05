@@ -4,12 +4,13 @@ description: "Use when troubleshooting errors, debugging build failures, or inve
 
 # Skill: diagnose
 
-**On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `diagnose v{version}` before proceeding.
-
 Diagnose SvelteKit and Svelte errors using pattern matching, documentation search, and optional browser error capture.
 
 ```
-IMPORTANT: Never load screenshots in main context. Use subagent for browser error capture.
+IMPORTANT: Keep screenshots out of any long-lived context. If you are the main agent, use a
+subagent for browser error capture (Step 1) and doc search (Step 3). If you are ALREADY a
+subagent (dispatched by a build/review orchestrator, or in a fork), skip the nested dispatch —
+run the browser scripts and doc greps directly in your own context and summarize.
 ```
 
 ---

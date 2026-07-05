@@ -4,12 +4,13 @@ description: "Use when checking accessibility, screen reader compatibility, or W
 
 # Skill: a11y-audit
 
-**On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `a11y-audit v{version}` before proceeding.
-
 Audit page accessibility by capturing the browser's accessibility tree and checking against a11y best practices checklist.
 
 ```
-IMPORTANT: Never load AX trees or DOM trees in main context. Always use subagent.
+IMPORTANT: Keep AX/DOM trees out of any long-lived context. If you are the main agent,
+dispatch the subagents in Steps 1–2. If you are ALREADY a subagent (dispatched by a
+build/review orchestrator, or in a fork), run the capture scripts directly in your own
+context and summarize — do not nest another dispatch.
 ```
 
 ---

@@ -4,14 +4,25 @@ description: "Use when interacting with a browser during Svelte or web developme
 
 # Skill: browser
 
-**On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `browser v{version}` before proceeding.
-
 Control Chrome/Chromium through CDP shell scripts.
 
 ```
-IMPORTANT: Never load screenshots, DOM trees, or accessibility trees in the main context.
-Always dispatch a subagent for visual/inspection tasks.
+IMPORTANT: Never let screenshots, DOM trees, or accessibility trees land in a long-lived
+context. How you keep them out depends on who is running this skill — see Execution context.
 ```
+
+## Execution context — dispatch vs. run direct
+
+The subagent dispatches below exist to keep large images/DOM/AX trees out of a **long-lived
+main context**. Pick the path by who you are:
+
+- **Main / interactive agent** (protecting your own context): dispatch the subagent as shown —
+  the artifact stays in the subagent, only a text summary returns to you.
+- **Already a subagent** (a build/review orchestrator dispatched you, or you're in a fork):
+  do **not** nest another dispatch. Run the `browser.sh` / `cdp-browser.js` commands directly,
+  `Read` the output file in your own context, and return **only a text summary** to your caller.
+  The large artifact dies with your ephemeral context anyway — nesting adds latency and failure
+  surface with nothing to protect.
 
 ---
 

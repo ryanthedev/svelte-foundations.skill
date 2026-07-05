@@ -4,8 +4,6 @@ description: "Use when answering questions about Svelte components, runes, templ
 
 # Skill: svelte-docs
 
-**On load:** Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. Display `svelte-docs v{version}` before proceeding.
-
 Search the official Svelte documentation to answer questions accurately.
 
 ---
